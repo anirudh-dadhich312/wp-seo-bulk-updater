@@ -29,7 +29,6 @@ export const createSite = async (req, res, next) => {
       return res.status(400).json({ error: 'name, siteUrl, username, appPassword are required' });
     }
 
-    // 1. Verify credentials work before saving
     const conn = await testConnection(siteUrl, username, appPassword);
     if (!conn.ok) {
       return res.status(400).json({ error: `WordPress connection failed: ${conn.error}` });
