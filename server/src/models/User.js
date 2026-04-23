@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     name: { type: String, default: '' },
     role: { type: String, enum: ['admin', 'operator'], default: 'admin' },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
   },
   { timestamps: true }
 );
@@ -24,6 +26,8 @@ userSchema.methods.comparePassword = function (candidate) {
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.resetPasswordToken;
+  delete obj.resetPasswordExpires;
   return obj;
 };
 
