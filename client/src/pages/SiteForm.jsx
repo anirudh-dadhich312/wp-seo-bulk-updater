@@ -5,24 +5,22 @@ import { Globe, User, Lock, FileText, ArrowLeft, Save, AlertCircle, CheckCircle,
 import api from '../api/axios';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
-const fadeUp  = { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22,1,0.36,1] } } };
+const fadeUp  = { hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } } };
 
-function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, required, placeholder, hint, as: As = 'input', rows }) {
+function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, required, hint, as: As = 'input', rows }) {
   const [focused, setFocused] = useState(false);
   const active = focused || (value && value.length > 0);
-
-  const inputClass = `w-full pl-10 pr-4 pt-6 pb-2 bg-transparent rounded-xl text-gray-900 text-sm focus:outline-none resize-none`;
 
   return (
     <div className="space-y-1.5">
       <div
         className={`relative flex items-start rounded-xl border-2 transition-all duration-200 ${
           focused
-            ? 'border-indigo-500 bg-white shadow-lg shadow-indigo-100/50'
-            : 'border-gray-200 bg-gray-50/80 hover:border-gray-300'
+            ? 'border-indigo-500/70 bg-white/[0.08] shadow-lg shadow-indigo-500/10'
+            : 'border-white/10 bg-white/[0.04] hover:border-white/20'
         }`}
       >
-        <Icon className={`absolute left-3.5 top-4 w-4 h-4 transition-colors ${focused ? 'text-indigo-500' : 'text-gray-400'}`} />
+        <Icon className={`absolute left-3.5 top-4 w-4 h-4 transition-colors ${focused ? 'text-indigo-400' : 'text-gray-600'}`} />
         {As === 'textarea' ? (
           <textarea
             rows={rows || 3}
@@ -32,7 +30,7 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder=" "
-            className={inputClass}
+            className="w-full pl-10 pr-4 pt-6 pb-2 bg-transparent rounded-xl text-white text-sm focus:outline-none resize-none placeholder-transparent"
           />
         ) : (
           <input
@@ -43,20 +41,20 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder=" "
-            className={inputClass}
+            className="w-full pl-10 pr-4 pt-6 pb-2 bg-transparent rounded-xl text-white text-sm focus:outline-none placeholder-transparent"
           />
         )}
         <label
           className={`absolute left-10 pointer-events-none transition-all duration-200 ${
-            active ? 'top-2 text-[11px] font-semibold text-indigo-500' : 'top-4 text-sm text-gray-400'
+            active ? 'top-2 text-[11px] font-semibold text-indigo-400' : 'top-4 text-sm text-gray-600'
           }`}
         >
           {label}
         </label>
       </div>
       {hint && (
-        <p className="flex items-start gap-1.5 text-xs text-gray-400 pl-1">
-          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-indigo-400" />
+        <p className="flex items-start gap-1.5 text-xs text-gray-600 pl-1">
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-indigo-500/60" />
           {hint}
         </p>
       )}
@@ -66,9 +64,9 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
 
 export default function SiteForm() {
   const { id } = useParams();
-  const nav = useNavigate();
-  const [form, setForm] = useState({ name: '', siteUrl: '', username: '', appPassword: '', notes: '' });
-  const [err, setErr]     = useState('');
+  const nav    = useNavigate();
+  const [form, setForm]       = useState({ name: '', siteUrl: '', username: '', appPassword: '', notes: '' });
+  const [err, setErr]         = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -84,7 +82,7 @@ export default function SiteForm() {
     setLoading(true);
     try {
       if (id) await api.put(`/sites/${id}`, form);
-      else await api.post('/sites', form);
+      else    await api.post('/sites', form);
       setSuccess(true);
       setTimeout(() => nav('/sites'), 900);
     } catch (e) {
@@ -99,14 +97,14 @@ export default function SiteForm() {
 
       {/* Back */}
       <motion.div variants={fadeUp}>
-        <Link to="/sites" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 font-medium transition-colors">
+        <Link to="/sites" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-400 font-medium transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to sites
         </Link>
       </motion.div>
 
       {/* Title */}
       <motion.div variants={fadeUp}>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white">
           {id ? 'Edit Site' : 'Add Client Site'}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
@@ -115,33 +113,35 @@ export default function SiteForm() {
       </motion.div>
 
       {/* Form card */}
-      <motion.div variants={fadeUp} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
+      <motion.div variants={fadeUp} className="bg-white/[0.05] backdrop-blur-2xl border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/20">
 
         <AnimatePresence mode="wait">
           {err && (
             <motion.div
+              key="err"
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="mb-5 flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-100 rounded-xl"
+              className="mb-5 flex items-start gap-2.5 p-3.5 bg-red-500/10 border border-red-500/25 rounded-xl"
             >
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <span className="text-sm text-red-700">{err}</span>
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <span className="text-sm text-red-300">{err}</span>
             </motion.div>
           )}
           {success && (
             <motion.div
+              key="ok"
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-              className="mb-5 flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl"
+              className="mb-5 flex items-center gap-2.5 p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl"
             >
-              <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-              <span className="text-sm text-emerald-700">Site saved! Redirecting…</span>
+              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span className="text-sm text-emerald-300">Site saved! Redirecting…</span>
             </motion.div>
           )}
         </AnimatePresence>
 
         <form onSubmit={submit} className="space-y-4">
-          <FloatingInput label="Site Name" icon={Globe} value={form.name} onChange={set('name')} required placeholder="My Client Brand" />
-          <FloatingInput label="Site URL" icon={Globe} value={form.siteUrl} onChange={set('siteUrl')} required placeholder="https://clientsite.com" />
-          <FloatingInput label="WP Username" icon={User} value={form.username} onChange={set('username')} required placeholder="admin" />
+          <FloatingInput label="Site Name"    icon={Globe} value={form.name}     onChange={set('name')}     required />
+          <FloatingInput label="Site URL"     icon={Globe} value={form.siteUrl}  onChange={set('siteUrl')}  required />
+          <FloatingInput label="WP Username"  icon={User}  value={form.username} onChange={set('username')} required />
           <FloatingInput
             label={id ? 'App Password (leave blank to keep current)' : 'Application Password'}
             icon={Lock}
@@ -164,9 +164,9 @@ export default function SiteForm() {
             <motion.button
               type="submit"
               disabled={loading || success}
-              whileHover={{ scale: 1.015, boxShadow: '0 8px 30px rgba(99,102,241,0.3)' }}
+              whileHover={{ scale: 1.015, boxShadow: '0 8px 30px rgba(99,102,241,0.35)' }}
               whileTap={{ scale: 0.975 }}
-              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold px-6 py-2.5 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-indigo-200 transition-shadow text-sm"
+              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold px-6 py-2.5 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/30 transition-shadow text-sm"
             >
               {loading ? (
                 <>
@@ -180,7 +180,7 @@ export default function SiteForm() {
                 <><Save className="w-4 h-4" /> Save Site</>
               )}
             </motion.button>
-            <p className="text-xs text-gray-400">Connection is tested and plugin auto-detected on save.</p>
+            <p className="text-xs text-gray-600">Plugin auto-detected on save.</p>
           </div>
         </form>
       </motion.div>
