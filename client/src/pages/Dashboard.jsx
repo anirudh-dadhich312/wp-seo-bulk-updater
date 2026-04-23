@@ -121,7 +121,7 @@ export default function Dashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold text-white">
             {greeting}, {firstName} 👋
           </h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="text-gray-400 text-sm mt-1">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
@@ -153,7 +153,7 @@ export default function Dashboard() {
                   {loading ? <span className="text-gray-700 animate-pulse">—</span> : card.value}
                 </p>
                 <p className="text-sm font-semibold text-gray-300 mt-1">{card.label}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{card.desc}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{card.desc}</p>
               </div>
             </TiltCard>
           );
@@ -176,7 +176,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Job Activity</p>
-              <p className="text-[11px] text-gray-500">Last {stats.last7.length} jobs</p>
+              <p className="text-[11px] text-gray-400">Last {stats.last7.length} jobs</p>
             </div>
           </div>
 
@@ -213,7 +213,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/[0.06]">
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-sm bg-gradient-to-br from-indigo-500 to-violet-500" />
-              <span className="text-[11px] text-gray-500">Rows processed</span>
+              <span className="text-[11px] text-gray-400">Rows processed</span>
             </div>
           </div>
         </motion.div>
@@ -249,7 +249,7 @@ export default function Dashboard() {
                 <Briefcase className="w-6 h-6 text-gray-500" />
               </div>
               <p className="text-gray-300 font-medium">No jobs yet</p>
-              <p className="text-sm text-gray-600 max-w-xs">Start your first bulk update to see job history here.</p>
+              <p className="text-sm text-gray-400 max-w-xs">Start your first bulk update to see job history here.</p>
               <Link to="/bulk-update" className="mt-1 text-sm text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
                 Create a job <ArrowRight className="w-3.5 h-3.5" />
               </Link>
@@ -273,8 +273,8 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-200 truncate text-sm">{job.site?.name || 'Unknown site'}</p>
                       <p className="text-xs text-gray-600 mt-0.5">
-                        {job.totalRows} rows · <span className="text-emerald-500">{job.successCount} ok</span> · <span className="text-red-400">{job.failedCount} fail</span>
-                        <span className="ml-2 text-gray-700">· {timeAgo(job.createdAt)}</span>
+                        {job.totalRows} rows · <span className="text-emerald-400">{job.successCount} ok</span> · <span className="text-red-400">{job.failedCount} fail</span>
+                        <span className="ml-2 text-gray-500">· {timeAgo(job.createdAt)}</span>
                       </p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">

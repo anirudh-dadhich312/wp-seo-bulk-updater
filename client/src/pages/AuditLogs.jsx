@@ -54,16 +54,16 @@ export default function AuditLogs() {
       <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Audit Log</h1>
-          <p className="text-gray-500 text-sm mt-1">Full history of every SEO change made across all sites.</p>
+          <p className="text-gray-400 text-sm mt-1">Full history of every SEO change made across all sites.</p>
         </div>
 
         {/* Filter */}
         <div className="relative">
-          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <select
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
-            className="pl-9 pr-10 py-2.5 border-2 border-white/10 bg-white/[0.06] text-gray-300 rounded-xl text-sm appearance-none focus:outline-none focus:border-indigo-500/70 focus:bg-white/[0.08] transition-all font-medium"
+            className="pl-9 pr-10 py-2.5 border-2 border-white/10 bg-white/[0.06] text-gray-200 rounded-xl text-sm appearance-none focus:outline-none focus:border-indigo-500/70 focus:bg-white/[0.08] transition-all font-medium"
           >
             <option value="" className="bg-[#0f0f2a] text-gray-400">All sites</option>
             {sites.map((s) => (
@@ -93,10 +93,10 @@ export default function AuditLogs() {
         ) : logs.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-3 text-center px-6">
             <div className="w-12 h-12 bg-white/[0.05] border border-white/10 rounded-2xl flex items-center justify-center">
-              <ClipboardList className="w-6 h-6 text-gray-600" />
+              <ClipboardList className="w-6 h-6 text-gray-400" />
             </div>
             <p className="font-bold text-white">No audit entries yet</p>
-            <p className="text-sm text-gray-600 max-w-xs">Run your first bulk update and all changes will appear here.</p>
+            <p className="text-sm text-gray-400 max-w-xs">Run your first bulk update and all changes will appear here.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -104,7 +104,7 @@ export default function AuditLogs() {
               <thead>
                 <tr className="border-b border-white/[0.06]">
                   {['When', 'Site', 'Post URL', 'Field', 'Change', 'Action', 'By'].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white/[0.02]">
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap bg-white/[0.02]">
                       {h}
                     </th>
                   ))}
@@ -120,7 +120,7 @@ export default function AuditLogs() {
                   >
                     <td className="px-4 py-3 whitespace-nowrap">
                       <p className="text-xs font-semibold text-gray-300">{timeAgo(log.createdAt)}</p>
-                      <p className="text-[10px] text-gray-600 mt-0.5">{new Date(log.createdAt).toLocaleString()}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{new Date(log.createdAt).toLocaleString()}</p>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs font-medium text-gray-400 whitespace-nowrap">{log.site?.name}</span>
@@ -157,7 +157,7 @@ export default function AuditLogs() {
                       <ActionBadge action={log.action} />
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs text-gray-600 whitespace-nowrap">{log.performedBy?.email || '—'}</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{log.performedBy?.email || '—'}</span>
                     </td>
                   </motion.tr>
                 ))}

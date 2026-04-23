@@ -64,7 +64,7 @@ export default function BulkUpdate() {
       {/* Header */}
       <motion.div variants={fadeUp}>
         <h1 className="text-2xl sm:text-3xl font-bold text-white">New Bulk Update</h1>
-        <p className="text-gray-500 text-sm mt-1">Choose a site and upload a CSV to update SEO metadata in bulk.</p>
+        <p className="text-gray-400 text-sm mt-1">Choose a site and upload a CSV to update SEO metadata in bulk.</p>
       </motion.div>
 
       {/* Form card */}
@@ -91,7 +91,7 @@ export default function BulkUpdate() {
               <label className="text-sm font-semibold text-gray-200">Select Client Site</label>
             </div>
             <div className="relative">
-              <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+              <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <select
                 value={siteId}
                 onChange={(e) => setSiteId(e.target.value)}
@@ -156,13 +156,13 @@ export default function BulkUpdate() {
                     dragging ? 'bg-indigo-500/20 border-indigo-500/40' : 'bg-white/[0.05] border-white/10'
                   }`}
                 >
-                  <UploadCloud className={`w-7 h-7 ${dragging ? 'text-indigo-400' : 'text-gray-500'}`} />
+                  <UploadCloud className={`w-7 h-7 ${dragging ? 'text-indigo-400' : 'text-gray-400'}`} />
                 </motion.div>
                 <div className="text-center">
                   <p className="text-sm font-semibold text-gray-300">
                     Drop CSV here or <span className="text-indigo-400">browse files</span>
                   </p>
-                  <p className="text-xs text-gray-600 mt-1">Supports .csv files only</p>
+                  <p className="text-xs text-gray-400 mt-1">Supports .csv files only</p>
                 </div>
               </div>
             ) : (
@@ -188,11 +188,11 @@ export default function BulkUpdate() {
               </motion.div>
             )}
 
-            <p className="text-xs text-gray-600 pl-1">
+            <p className="text-xs text-gray-400 pl-1">
               Required columns:{' '}
-              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-400">post_url</code>{' '}
-              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-400">meta_title</code>{' '}
-              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-400">meta_description</code>
+              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-300">post_url</code>{' '}
+              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-300">meta_title</code>{' '}
+              <code className="bg-white/[0.08] px-1.5 py-0.5 rounded text-gray-300">meta_description</code>
             </p>
           </div>
 

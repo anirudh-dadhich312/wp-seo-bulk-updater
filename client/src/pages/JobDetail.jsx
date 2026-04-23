@@ -113,7 +113,7 @@ export default function JobDetail() {
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight">{job.site?.name}</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                {job.site?.siteUrl} ·{' '}
+                <span className="text-gray-400">{job.site?.siteUrl}</span> ·{' '}
                 <span className="font-mono text-indigo-400">{job.site?.detectedPlugin}</span>
               </p>
               <div className="flex flex-wrap items-center gap-3 mt-3">
@@ -122,7 +122,7 @@ export default function JobDetail() {
                   {cfg.label}
                 </span>
                 <span className="text-xs text-gray-600">
-                  {job.totalRows} rows · <span className="text-emerald-400 font-medium">{job.successCount} success</span> · <span className="text-red-400 font-medium">{job.failedCount} failed</span>
+                  <span className="text-gray-300">{job.totalRows} rows</span> · <span className="text-emerald-400 font-medium">{job.successCount} success</span> · <span className="text-red-400 font-medium">{job.failedCount} failed</span>
                 </span>
               </div>
             </div>
@@ -217,7 +217,7 @@ export default function JobDetail() {
       {/* Rows table */}
       <motion.div variants={fadeUp} className="bg-white/[0.05] backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white">{rows.length} rows</h2>
+          <h2 className="text-sm font-bold text-gray-200">{rows.length} rows</h2>
           {editing && (
             <span className="text-xs font-semibold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-full">
               Editing mode
@@ -267,7 +267,7 @@ export default function JobDetail() {
                         className="w-full border border-white/10 bg-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500/60 transition-colors"
                       />
                     ) : (
-                      <span className="text-xs text-gray-500 line-clamp-2">{r.newDescription}</span>
+                      <span className="text-xs text-gray-400 line-clamp-2">{r.newDescription}</span>
                     )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">

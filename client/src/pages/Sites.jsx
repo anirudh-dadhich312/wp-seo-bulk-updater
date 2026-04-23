@@ -79,7 +79,7 @@ function SiteCard({ site, busy, onRedetect, onDelete }) {
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="text-xs text-gray-500 hover:text-indigo-400 flex items-center gap-1 mt-0.5 transition-colors truncate"
+              className="text-xs text-gray-400 hover:text-indigo-400 flex items-center gap-1 mt-0.5 transition-colors truncate"
             >
               {site.siteUrl} <ExternalLink className="w-3 h-3 flex-shrink-0" />
             </a>
@@ -89,7 +89,7 @@ function SiteCard({ site, busy, onRedetect, onDelete }) {
 
         {/* Notes */}
         {site.notes && (
-          <p className="text-xs text-gray-600 leading-relaxed line-clamp-2 border-t border-white/[0.06] pt-3">
+          <p className="text-xs text-gray-400 leading-relaxed line-clamp-2 border-t border-white/[0.06] pt-3">
             {site.notes}
           </p>
         )}
@@ -150,7 +150,7 @@ export default function Sites() {
       <motion.div variants={fadeUp} className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Client Sites</h1>
-          <p className="text-gray-500 text-sm mt-1">{sites.length} site{sites.length !== 1 ? 's' : ''} connected</p>
+          <p className="text-gray-400 text-sm mt-1">{sites.length} site{sites.length !== 1 ? 's' : ''} connected</p>
         </div>
         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
           <Link
@@ -192,7 +192,7 @@ export default function Sites() {
               <Globe className="w-7 h-7 text-indigo-400" />
             </div>
             <p className="font-bold text-white text-lg">No sites yet</p>
-            <p className="text-sm text-gray-500 max-w-xs">Add your first WordPress site to start bulk updating SEO metadata.</p>
+            <p className="text-sm text-gray-400 max-w-xs">Add your first WordPress site to start bulk updating SEO metadata.</p>
             <Link to="/sites/new" className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-indigo-400 hover:text-indigo-300">
               Add your first site <ArrowRight className="w-4 h-4" />
             </Link>

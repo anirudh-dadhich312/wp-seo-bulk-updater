@@ -20,7 +20,7 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
             : 'border-white/10 bg-white/[0.04] hover:border-white/20'
         }`}
       >
-        <Icon className={`absolute left-3.5 top-4 w-4 h-4 transition-colors ${focused ? 'text-indigo-400' : 'text-gray-600'}`} />
+        <Icon className={`absolute left-3.5 top-4 w-4 h-4 transition-colors ${focused ? 'text-indigo-400' : 'text-gray-400'}`} />
         {As === 'textarea' ? (
           <textarea
             rows={rows || 3}
@@ -46,15 +46,15 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
         )}
         <label
           className={`absolute left-10 pointer-events-none transition-all duration-200 ${
-            active ? 'top-2 text-[11px] font-semibold text-indigo-400' : 'top-4 text-sm text-gray-600'
+            active ? 'top-2 text-[11px] font-semibold text-indigo-400' : 'top-4 text-sm text-gray-400'
           }`}
         >
           {label}
         </label>
       </div>
       {hint && (
-        <p className="flex items-start gap-1.5 text-xs text-gray-600 pl-1">
-          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-indigo-500/60" />
+        <p className="flex items-start gap-1.5 text-xs text-gray-400 pl-1">
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-indigo-400" />
           {hint}
         </p>
       )}
@@ -107,7 +107,7 @@ export default function SiteForm() {
         <h1 className="text-2xl sm:text-3xl font-bold text-white">
           {id ? 'Edit Site' : 'Add Client Site'}
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-gray-400 text-sm mt-1">
           {id ? 'Update the site connection details below.' : 'Connect a WordPress site to start bulk updating SEO.'}
         </p>
       </motion.div>
@@ -180,7 +180,7 @@ export default function SiteForm() {
                 <><Save className="w-4 h-4" /> Save Site</>
               )}
             </motion.button>
-            <p className="text-xs text-gray-600">Plugin auto-detected on save.</p>
+            <p className="text-xs text-gray-400">Plugin auto-detected on save.</p>
           </div>
         </form>
       </motion.div>

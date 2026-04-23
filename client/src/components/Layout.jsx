@@ -32,7 +32,7 @@ function Sidebar({ onClose }) {
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-none">SEO Bulk Updater</p>
-            <p className="text-gray-500 text-[10px] mt-0.5">WordPress meta automation</p>
+            <p className="text-gray-400 text-[10px] mt-0.5">WordPress meta automation</p>
           </div>
         </div>
         {onClose && (
@@ -44,7 +44,7 @@ function Sidebar({ onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-2 pt-2 pb-1.5">
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider px-2 pt-2 pb-1.5">
           Navigation
         </p>
         {NAV.map(({ to, end, icon: Icon, label }) => (
@@ -79,8 +79,8 @@ function Sidebar({ onClose }) {
             {user?.email?.[0]?.toUpperCase() || 'U'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-300 truncate leading-none">{user?.email}</p>
-            <p className="text-[10px] text-gray-600 mt-0.5 capitalize">{user?.role || 'admin'}</p>
+            <p className="text-xs text-gray-200 truncate leading-none">{user?.email}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 capitalize">{user?.role || 'admin'}</p>
           </div>
           <button
             onClick={handleLogout}
