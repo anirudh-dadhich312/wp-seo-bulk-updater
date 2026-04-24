@@ -54,9 +54,54 @@ add_action('rest_api_init', function () {
 });
 
 /**
- * Optional: expose AIOSEO v4+ data via a virtual REST field.
+ * Expose Rank Math SEO data via a dedicated REST field.
+ * Writing through this field calls update_post_meta directly and fires
+ * Rank Math's own hooks so its object cache is properly invalidated.
+ */
+add_action('rest_api_init', function () {
+    if (!defined('RANK_MATH_VERSION')) {
+        return;
+    }
+
+    $post_types = get_post_types(['public' => true], 'names');
+
+    register_rest_field($post_types, 'rankmath', [
+        'get_callback' => function ($post) {
+            return [
+                'title'       => (string) get_post_meta($post['id'], 'rank_math_title', true),
+                'description' => (string) get_post_meta($post['id'], 'rank_math_description', true),
+            ];
+        },
+        'update_callback' => function ($value, $post) {
+            if (!current_user_can('edit_post', $post->ID)) {
+                return new WP_Error('rest_forbidden', 'Insufficient permissions', ['status' => 403]);
+            }
+            if (isset($value['title'])) {
+                update_post_meta($post->ID, 'rank_math_title', sanitize_text_field($value['title']));
+            }
+            if (isset($value['description'])) {
+                update_post_meta($post->ID, 'rank_math_description', sanitize_text_field($value['description']));
+            }
+            // Bust Rank Math's object cache so the updated values are picked up immediately
+            wp_cache_delete('rank_math_post_meta_' . $post->ID);
+            do_action('rank_math/post/update_meta', $post->ID, [], []);
+            return true;
+        },
+        'schema' => [
+            'type' => 'object',
+            'properties' => [
+                'title'       => ['type' => 'string'],
+                'description' => ['type' => 'string'],
+            ],
+        ],
+    ]);
+});
+
+/**
+ * Expose AIOSEO v4+ data via a virtual REST field.
  * AIOSEO 4+ stores SEO data in its own custom table (`wp_aioseo_posts`),
- * so registering post meta is not enough. We mirror reads/writes here.
+ * so registering post meta is not enough. We mirror reads/writes here
+ * through AIOSEO's own PHP API so the custom table is always kept in sync.
  */
 add_action('rest_api_init', function () {
     if (!function_exists('aioseo')) {
@@ -70,11 +115,15 @@ add_action('rest_api_init', function () {
             try {
                 $obj = aioseo()->helpers->getPost($post['id']);
                 return [
-                    'title'       => isset($obj->title) ? $obj->title : '',
-                    'description' => isset($obj->description) ? $obj->description : '',
+                    'title'       => isset($obj->title) ? (string) $obj->title : '',
+                    'description' => isset($obj->description) ? (string) $obj->description : '',
                 ];
             } catch (\Throwable $e) {
-                return null;
+                // Fallback: try legacy post meta (AIOSEO < 4)
+                return [
+                    'title'       => (string) get_post_meta($post['id'], '_aioseo_title', true),
+                    'description' => (string) get_post_meta($post['id'], '_aioseo_description', true),
+                ];
             }
         },
         'update_callback' => function ($value, $post) {
@@ -92,7 +141,14 @@ add_action('rest_api_init', function () {
                 $obj->save();
                 return true;
             } catch (\Throwable $e) {
-                return new WP_Error('aioseo_save_failed', $e->getMessage(), ['status' => 500]);
+                // Fallback: write to legacy post meta (AIOSEO < 4)
+                if (isset($value['title'])) {
+                    update_post_meta($post->ID, '_aioseo_title', sanitize_text_field($value['title']));
+                }
+                if (isset($value['description'])) {
+                    update_post_meta($post->ID, '_aioseo_description', sanitize_text_field($value['description']));
+                }
+                return true;
             }
         },
         'schema' => [
