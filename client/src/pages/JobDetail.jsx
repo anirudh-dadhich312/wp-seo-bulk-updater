@@ -146,7 +146,11 @@ export default function JobDetail() {
   const saveRows = async () => { await api.put(`/jobs/${id}/rows`, { rows }); setEditing(false); load(); };
   const runJob = async () => {
     if (!window.confirm(`Run bulk update for ${job.totalRows} posts on ${job.site?.name}?`)) return;
-    await api.post(`/jobs/${id}/run`); load();
+    await api.post(`/jobs/${id}/run`);
+    // Optimistically flip to 'running' so the SSE connection opens immediately.
+    // The DB update inside runBulkJob is async — a load() here would often still
+    // see 'draft', causing the status-change effect to miss the 'running' transition.
+    setJob((prev) => prev ? { ...prev, status: 'running' } : prev);
   };
   const rollback = async () => {
     if (!window.confirm('Roll back all successful changes from this job?')) return;

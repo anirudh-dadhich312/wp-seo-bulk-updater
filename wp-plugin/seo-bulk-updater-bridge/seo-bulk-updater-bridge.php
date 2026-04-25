@@ -76,15 +76,21 @@ add_action('rest_api_init', function () {
             if (!current_user_can('edit_post', $post->ID)) {
                 return new WP_Error('rest_forbidden', 'Insufficient permissions', ['status' => 403]);
             }
-            if (isset($value['title'])) {
-                update_post_meta($post->ID, 'rank_math_title', sanitize_text_field($value['title']));
-            }
-            if (isset($value['description'])) {
-                update_post_meta($post->ID, 'rank_math_description', sanitize_text_field($value['description']));
-            }
-            // Bust Rank Math's object cache so the updated values are picked up immediately
-            wp_cache_delete('rank_math_post_meta_' . $post->ID);
-            do_action('rank_math/post/update_meta', $post->ID, [], []);
+
+            $post_id = (int) $post->ID;
+            $title = isset($value['title'])       ? sanitize_text_field($value['title'])       : null;
+            $desc  = isset($value['description']) ? sanitize_text_field($value['description']) : null;
+
+            if ($title !== null) update_post_meta($post_id, 'rank_math_title',       $title);
+            if ($desc  !== null) update_post_meta($post_id, 'rank_math_description', $desc);
+
+            // Bust every known Rank Math cache key + WordPress's own post meta cache
+            wp_cache_delete('rank_math_post_meta_' . $post_id);
+            wp_cache_delete($post_id, 'rank_math_post_meta');
+            wp_cache_delete($post_id, 'post_meta');
+            clean_post_cache($post_id);
+
+            do_action('rank_math/post/update_meta', $post_id, [], []);
             return true;
         },
         'schema' => [
