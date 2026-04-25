@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -99,60 +99,108 @@ add_action('rest_api_init', function () {
 
 /**
  * Expose AIOSEO v4+ data via a virtual REST field.
- * AIOSEO 4+ stores SEO data in its own custom table (`wp_aioseo_posts`),
- * so registering post meta is not enough. We mirror reads/writes here
- * through AIOSEO's own PHP API so the custom table is always kept in sync.
+ *
+ * AIOSEO 4+ stores SEO data in its own `wp_aioseo_posts` custom table, NOT in
+ * wp_postmeta. The previously used aioseo()->helpers->getPost() helper does not
+ * return a writable/saveable object in AIOSEO 4.9+, so writes were silently lost
+ * while still returning a 200 OK response.
+ *
+ * Fix: read and write directly via $wpdb against the aioseo_posts table.
+ * This is version-agnostic and is exactly what AIOSEO's own code does internally.
+ * Falls back to legacy post meta for sites still on AIOSEO < 4.
  */
 add_action('rest_api_init', function () {
-    if (!function_exists('aioseo')) {
+    // Guard: only register if AIOSEO is active
+    if (!function_exists('aioseo') && !defined('AIOSEO_VERSION')) {
         return;
     }
 
     $post_types = get_post_types(['public' => true], 'names');
 
     register_rest_field($post_types, 'aioseo', [
+
+        // ── READ ────────────────────────────────────────────────────────────
         'get_callback' => function ($post) {
-            try {
-                $obj = aioseo()->helpers->getPost($post['id']);
-                return [
-                    'title'       => isset($obj->title) ? (string) $obj->title : '',
-                    'description' => isset($obj->description) ? (string) $obj->description : '',
-                ];
-            } catch (\Throwable $e) {
-                // Fallback: try legacy post meta (AIOSEO < 4)
-                return [
-                    'title'       => (string) get_post_meta($post['id'], '_aioseo_title', true),
-                    'description' => (string) get_post_meta($post['id'], '_aioseo_description', true),
-                ];
+            global $wpdb;
+            $post_id = (int) $post['id'];
+            $table   = $wpdb->prefix . 'aioseo_posts';
+
+            // AIOSEO 4+: read from custom table
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+                $row = $wpdb->get_row(
+                    $wpdb->prepare("SELECT title, description FROM `{$table}` WHERE post_id = %d LIMIT 1", $post_id)
+                );
+                if ($row) {
+                    return [
+                        'title'       => (string) ($row->title       ?? ''),
+                        'description' => (string) ($row->description ?? ''),
+                    ];
+                }
+                // Row doesn't exist yet — return empty (will be inserted on first write)
+                return ['title' => '', 'description' => ''];
             }
+
+            // AIOSEO < 4: legacy post meta fallback
+            return [
+                'title'       => (string) get_post_meta($post_id, '_aioseo_title',       true),
+                'description' => (string) get_post_meta($post_id, '_aioseo_description', true),
+            ];
         },
+
+        // ── WRITE ───────────────────────────────────────────────────────────
         'update_callback' => function ($value, $post) {
             if (!current_user_can('edit_post', $post->ID)) {
                 return new WP_Error('rest_forbidden', 'Insufficient permissions', ['status' => 403]);
             }
-            try {
-                $obj = aioseo()->helpers->getPost($post->ID);
-                if (isset($value['title'])) {
-                    $obj->title = sanitize_text_field($value['title']);
+
+            global $wpdb;
+            $post_id = (int) $post->ID;
+            $table   = $wpdb->prefix . 'aioseo_posts';
+
+            $title = isset($value['title'])       ? sanitize_text_field($value['title'])       : null;
+            $desc  = isset($value['description']) ? sanitize_text_field($value['description']) : null;
+
+            // AIOSEO 4+: write directly to wp_aioseo_posts
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table) {
+                $exists = $wpdb->get_var(
+                    $wpdb->prepare("SELECT id FROM `{$table}` WHERE post_id = %d LIMIT 1", $post_id)
+                );
+
+                $data   = ['updated' => current_time('mysql')];
+                $format = ['%s'];
+
+                if ($title !== null) { $data['title']       = $title; $format[] = '%s'; }
+                if ($desc  !== null) { $data['description'] = $desc;  $format[] = '%s'; }
+
+                if ($exists) {
+                    $wpdb->update($table, $data, ['post_id' => $post_id], $format, ['%d']);
+                } else {
+                    $data['post_id'] = $post_id;
+                    $data['created'] = current_time('mysql');
+                    $format[]        = '%d';
+                    $format[]        = '%s';
+                    $wpdb->insert($table, $data, $format);
                 }
-                if (isset($value['description'])) {
-                    $obj->description = sanitize_text_field($value['description']);
+
+                // Bust AIOSEO's object cache so the new values are served immediately
+                wp_cache_delete("aioseo_post_{$post_id}");
+                wp_cache_delete("aioseo_post_meta_{$post_id}");
+                if (function_exists('aioseo') && isset(aioseo()->cache)) {
+                    // Belt-and-suspenders: also clear via AIOSEO's cache object if available
+                    try { aioseo()->cache->delete("post_{$post_id}"); } catch (\Throwable $e) {}
                 }
-                $obj->save();
-                return true;
-            } catch (\Throwable $e) {
-                // Fallback: write to legacy post meta (AIOSEO < 4)
-                if (isset($value['title'])) {
-                    update_post_meta($post->ID, '_aioseo_title', sanitize_text_field($value['title']));
-                }
-                if (isset($value['description'])) {
-                    update_post_meta($post->ID, '_aioseo_description', sanitize_text_field($value['description']));
-                }
+
                 return true;
             }
+
+            // AIOSEO < 4: legacy post meta fallback
+            if ($title !== null) update_post_meta($post_id, '_aioseo_title',       $title);
+            if ($desc  !== null) update_post_meta($post_id, '_aioseo_description', $desc);
+            return true;
         },
+
         'schema' => [
-            'type' => 'object',
+            'type'       => 'object',
             'properties' => [
                 'title'       => ['type' => 'string'],
                 'description' => ['type' => 'string'],
