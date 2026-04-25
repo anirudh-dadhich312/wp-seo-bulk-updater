@@ -3,8 +3,10 @@ import pLimit from 'p-limit';
 import { createWpClient } from './wpClient.js';
 import { resolvePostFromUrl } from './urlResolver.js';
 import { readPostMeta, writePostMeta, readTermMeta, writeTermMeta } from './metaWriter.js';
+import { detectForSite } from './pluginDetector.js';
 import AuditLog from '../models/AuditLog.js';
 import Job from '../models/Job.js';
+import Site from '../models/Site.js';
 
 const CONCURRENCY = 3;
 const PER_REQUEST_DELAY = 200;
@@ -25,9 +27,22 @@ export const runBulkJob = async (jobId, userId) => {
   if (!job.site) throw new Error('Job has no associated site');
 
   const site = job.site;
-  const plugin = site.detectedPlugin && site.detectedPlugin !== 'unknown'
-    ? site.detectedPlugin
-    : 'generic';
+
+  // Auto-redetect the SEO plugin before every job run so that a plugin
+  // switch (e.g. Yoast → Rank Math) is picked up without any manual action.
+  let plugin;
+  try {
+    const fresh = await detectForSite(site);
+    plugin = fresh && fresh !== 'unknown' ? fresh : 'generic';
+    if (fresh !== site.detectedPlugin) {
+      await Site.findByIdAndUpdate(site._id, { detectedPlugin: fresh, lastDetectedAt: new Date() });
+    }
+  } catch (_) {
+    plugin = site.detectedPlugin && site.detectedPlugin !== 'unknown'
+      ? site.detectedPlugin
+      : 'generic';
+  }
+
   const wp = createWpClient(site);
 
   const emitter = new EventEmitter();

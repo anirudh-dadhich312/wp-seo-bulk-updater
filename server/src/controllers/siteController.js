@@ -65,12 +65,25 @@ export const updateSite = async (req, res, next) => {
     if (appPassword) update.appPasswordEncrypted = encrypt(appPassword);
     if (notes !== undefined) update.notes = notes;
 
-    const site = await Site.findOneAndUpdate(
+    let site = await Site.findOneAndUpdate(
       { _id: req.params.id, createdBy: req.user._id },
       update,
       { new: true }
     );
     if (!site) return res.status(404).json({ error: 'Site not found' });
+
+    // If connection details changed, re-detect the active SEO plugin automatically
+    if (siteUrl || username || appPassword) {
+      try {
+        const plugin = await detectForSite(site);
+        site = await Site.findByIdAndUpdate(
+          site._id,
+          { detectedPlugin: plugin, lastDetectedAt: new Date() },
+          { new: true }
+        );
+      } catch (_) {}
+    }
+
     res.json(site);
   } catch (err) {
     next(err);
