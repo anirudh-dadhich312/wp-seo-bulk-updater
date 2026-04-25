@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, RotateCcw, Download, Pencil, X, Save, CheckCircle, XCircle, Clock, Loader2, AlertCircle, Globe } from 'lucide-react';
+import { ArrowLeft, Play, RotateCcw, Download, Pencil, X, Save, CheckCircle, XCircle, Clock, Loader2, AlertCircle, Globe, Zap, StopCircle } from 'lucide-react';
 import api from '../api/axios';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
@@ -12,34 +12,125 @@ const STATUS_CFG = {
   running:   { label: 'Running',   card: 'border-blue-200 bg-blue-50/50 dark:border-blue-500/30 dark:bg-blue-500/5', badge: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25',               dot: 'bg-blue-500 animate-pulse',      icon: Loader2 },
   completed: { label: 'Completed', card: 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/30 dark:bg-emerald-500/5', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25', dot: 'bg-emerald-500', icon: CheckCircle },
   failed:    { label: 'Failed',    card: 'border-red-200 bg-red-50/50 dark:border-red-500/30 dark:bg-red-500/5',    badge: 'bg-red-100 text-red-600 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25',                   dot: 'bg-red-500',                     icon: XCircle },
+  cancelled: { label: 'Cancelled', card: 'border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/5', badge: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25', dot: 'bg-amber-500', icon: StopCircle },
 };
 
 const ROW_STATUS = {
   pending: 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/15 dark:text-gray-400 dark:border-gray-500/25',
   success: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25',
   failed:  'bg-red-100 text-red-600 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25',
-  skipped: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
+  skipped:   'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25',
 };
+
+const SSE_BASE = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/api$/, '')
+  : '';
 
 export default function JobDetail() {
   const { id } = useParams();
-  const [job,     setJob]     = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [rows,    setRows]    = useState([]);
-  const pollRef = useRef(null);
+  const [job,       setJob]      = useState(null);
+  const [editing,   setEditing]  = useState(false);
+  const [rows,      setRows]     = useState([]);
+  const [liveStats,   setLiveStats]   = useState(null); // real-time counts from SSE
+  const [sseActive,   setSseActive]   = useState(false);
+  const [cancelling,  setCancelling]  = useState(false);
+  const sseRef    = useRef(null);
+  const pollRef   = useRef(null);
+  const editingRef = useRef(false);
 
-  const load = async () => {
+  editingRef.current = editing;
+
+  const load = useCallback(async () => {
     const { data } = await api.get(`/jobs/${id}`);
     setJob(data);
-    if (!editing) setRows(data.rows);
+    setLiveStats(null); // reset live overlay once we have fresh DB data
+    if (!editingRef.current) setRows(data.rows);
     return data;
-  };
+  }, [id]);
 
-  useEffect(() => { load(); return () => clearInterval(pollRef.current); }, [id]);
+  // Opens an SSE connection and drives real-time progress updates
+  const openSse = useCallback(() => {
+    if (sseRef.current) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const url = `${SSE_BASE}/api/jobs/${id}/events?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+    sseRef.current = es;
+    setSseActive(true);
+
+    es.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'snapshot') {
+          // Initial state from server — sync job status without a full reload
+          setJob((prev) => prev ? { ...prev, status: msg.status } : prev);
+        }
+
+        if (msg.type === 'progress') {
+          // Update live counters and per-row statuses in real time
+          setLiveStats({ successCount: msg.successCount, failedCount: msg.failedCount });
+          if (!editingRef.current) {
+            setRows((prev) => {
+              const next = [...prev];
+              if (next[msg.rowIndex]) {
+                next[msg.rowIndex] = { ...next[msg.rowIndex], status: msg.rowStatus };
+              }
+              return next;
+            });
+          }
+        }
+
+        if (msg.type === 'done') {
+          es.close();
+          sseRef.current = null;
+          setSseActive(false);
+          // Full reload from DB to get final authoritative state
+          load();
+        }
+      } catch (_) {}
+    };
+
+    es.onerror = () => {
+      // SSE connection dropped — fall back to polling
+      es.close();
+      sseRef.current = null;
+      setSseActive(false);
+      if (!pollRef.current) {
+        pollRef.current = setInterval(load, 2000);
+      }
+    };
+  }, [id, load]);
+
+  const closeSse = useCallback(() => {
+    sseRef.current?.close();
+    sseRef.current = null;
+    setSseActive(false);
+  }, []);
+
+  // Initial load
   useEffect(() => {
-    if (job?.status === 'running') {
-      pollRef.current = setInterval(load, 2000);
-      return () => clearInterval(pollRef.current);
+    load();
+    return () => {
+      closeSse();
+      clearInterval(pollRef.current);
+    };
+  }, [id]);
+
+  // React to job status changes
+  useEffect(() => {
+    if (!job) return;
+
+    if (job.status === 'running') {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+      openSse();
+    } else {
+      closeSse();
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+      setCancelling(false);
     }
   }, [job?.status]);
 
@@ -61,6 +152,11 @@ export default function JobDetail() {
     if (!window.confirm('Roll back all successful changes from this job?')) return;
     await api.post(`/jobs/${id}/rollback`); load();
   };
+  const stopJob = async () => {
+    if (!window.confirm('Stop this job? Rows already in progress will finish, remaining rows will be skipped.')) return;
+    setCancelling(true);
+    try { await api.post(`/jobs/${id}/cancel`); } catch (_) {}
+  };
   const downloadReport = async () => {
     const res = await api.get(`/jobs/${id}/report`, { responseType: 'blob' });
     const url = URL.createObjectURL(res.data);
@@ -68,7 +164,12 @@ export default function JobDetail() {
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   };
 
-  const progress = job.totalRows > 0 ? Math.round(((job.successCount + job.failedCount) / job.totalRows) * 100) : 0;
+  // Use live SSE counts when available, fall back to DB values
+  const successCount = liveStats?.successCount ?? job.successCount;
+  const failedCount  = liveStats?.failedCount  ?? job.failedCount;
+  const progress = job.totalRows > 0
+    ? Math.round(((successCount + failedCount) / job.totalRows) * 100)
+    : 0;
   const cfg = STATUS_CFG[job.status] || STATUS_CFG.draft;
 
   return (
@@ -98,13 +199,26 @@ export default function JobDetail() {
                   {cfg.label}
                 </span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {job.totalRows} rows · <span className="text-emerald-600 dark:text-emerald-400 font-medium">{job.successCount} success</span> · <span className="text-red-500 dark:text-red-400 font-medium">{job.failedCount} failed</span>
+                  {job.totalRows} rows · <span className="text-emerald-600 dark:text-emerald-400 font-medium">{successCount} success</span> · <span className="text-red-500 dark:text-red-400 font-medium">{failedCount} failed</span>
                 </span>
+                {sseActive && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <Zap className="w-3 h-3" /> Live
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+            {job.status === 'running' && (
+              <button onClick={stopJob} disabled={cancelling}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl transition shadow-md shadow-red-500/20">
+                {cancelling
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Stopping…</>
+                  : <><StopCircle className="w-3.5 h-3.5" /> Stop Job</>}
+              </button>
+            )}
             {job.status === 'draft' && (
               <>
                 {editing ? (
@@ -151,13 +265,18 @@ export default function JobDetail() {
               className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-500/20">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Running… auto-refreshing every 2s
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {sseActive ? 'Live update streaming…' : 'Running… auto-refreshing'}
                 </span>
                 <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{progress}%</span>
               </div>
-              <div className="w-full bg-blue-100 dark:bg-blue-500/10 rounded-full h-2 overflow-hidden border border-blue-200 dark:border-blue-500/20">
-                <motion.div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full"
-                  initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5 }} />
+              <div className="w-full bg-blue-100 dark:bg-blue-500/10 rounded-full h-2.5 overflow-hidden border border-blue-200 dark:border-blue-500/20">
+                <motion.div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2.5 rounded-full"
+                  animate={{ width: `${progress}%` }} transition={{ duration: 0.3, ease: 'easeOut' }} />
+              </div>
+              <div className="flex items-center justify-between mt-2 text-xs text-blue-600/70 dark:text-blue-400/70">
+                <span>{successCount + failedCount} of {job.totalRows} processed</span>
+                {failedCount > 0 && <span className="text-red-500 dark:text-red-400">{failedCount} failed</span>}
               </div>
             </motion.div>
           )}
@@ -211,9 +330,14 @@ export default function JobDetail() {
                     )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${ROW_STATUS[r.status] || ROW_STATUS.pending}`}>
-                      {r.status}
-                    </span>
+                    <AnimatePresence mode="wait">
+                      <motion.span key={r.status}
+                        initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${ROW_STATUS[r.status] || ROW_STATUS.pending}`}>
+                        {r.status}
+                      </motion.span>
+                    </AnimatePresence>
                     {r.error && (
                       <p className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400 mt-1">
                         <AlertCircle className="w-3 h-3 flex-shrink-0" />

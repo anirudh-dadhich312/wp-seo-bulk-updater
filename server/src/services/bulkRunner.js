@@ -1,20 +1,24 @@
+import EventEmitter from 'events';
 import pLimit from 'p-limit';
 import { createWpClient } from './wpClient.js';
 import { resolvePostFromUrl } from './urlResolver.js';
-import { readPostMeta, writePostMeta } from './metaWriter.js';
+import { readPostMeta, writePostMeta, readTermMeta, writeTermMeta } from './metaWriter.js';
 import AuditLog from '../models/AuditLog.js';
 import Job from '../models/Job.js';
 
-const CONCURRENCY = 3;       // safe default for shared hosts
-const PER_REQUEST_DELAY = 200; // ms cooldown after each request
+const CONCURRENCY = 3;
+const PER_REQUEST_DELAY = 200;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Execute a bulk meta update job.
- * Updates job status + per-row state in MongoDB as it progresses.
- * Designed to be called fire-and-forget from a controller.
- */
+// In-memory emitter registry for SSE real-time progress
+const jobEmitters = new Map();
+export const getJobEmitter = (jobId) => jobEmitters.get(String(jobId));
+
+// Jobs that have been requested to cancel (checked before each row)
+const cancelRequests = new Set();
+export const requestCancel = (jobId) => cancelRequests.add(String(jobId));
+
 export const runBulkJob = async (jobId, userId) => {
   const job = await Job.findById(jobId).populate('site');
   if (!job) throw new Error('Job not found');
@@ -26,94 +30,127 @@ export const runBulkJob = async (jobId, userId) => {
     : 'generic';
   const wp = createWpClient(site);
 
-  job.status = 'running';
-  job.startedAt = new Date();
-  job.pluginUsed = plugin;
-  await job.save();
+  const emitter = new EventEmitter();
+  emitter.setMaxListeners(20);
+  jobEmitters.set(String(jobId), emitter);
+
+  await Job.findByIdAndUpdate(jobId, {
+    status: 'running',
+    startedAt: new Date(),
+    pluginUsed: plugin,
+  });
 
   const limit = pLimit(CONCURRENCY);
+  let successCount = 0;
+  let failedCount  = 0;
+  let skippedCount = 0;
 
   await Promise.all(
     job.rows.map((row, idx) =>
       limit(async () => {
-        try {
-          // 1. Resolve URL → post id + type
-          const { id: postId, type: postType } = await resolvePostFromUrl(wp, row.postUrl);
+        // Check for cancellation before starting each row
+        if (cancelRequests.has(String(jobId))) {
+          skippedCount++;
+          await Job.findByIdAndUpdate(jobId, {
+            $set: {
+              [`rows.${idx}.status`]: 'skipped',
+              [`rows.${idx}.processedAt`]: new Date(),
+            },
+          });
+          emitter.emit('progress', { successCount, failedCount, skippedCount, totalRows: job.totalRows, rowIndex: idx, rowStatus: 'skipped' });
+          return;
+        }
 
-          // 2. Read current meta (best-effort, used for audit + rollback)
+        const rowUpdate = { [`rows.${idx}.processedAt`]: new Date() };
+
+        try {
+          const resolved = await resolvePostFromUrl(wp, row.postUrl);
+
           let oldMeta = { title: '', description: '' };
-          try {
-            oldMeta = await readPostMeta(wp, postType, postId, plugin);
-          } catch (_) {
-            // non-fatal — some sites restrict edit context
+
+          if (resolved.kind === 'term') {
+            // ── Taxonomy term (category, tag, custom taxonomy) ────────────
+            try { oldMeta = await readTermMeta(wp, resolved.restBase, resolved.id); } catch (_) {}
+
+            await writeTermMeta(wp, resolved.restBase, resolved.id, {
+              title: row.newTitle,
+              description: row.newDescription,
+            });
+
+            rowUpdate[`rows.${idx}.resolvedPostId`]   = resolved.id;
+            rowUpdate[`rows.${idx}.resolvedPostType`] = `taxonomy:${resolved.restBase}`;
+          } else {
+            // ── Standard post / page / CPT ────────────────────────────────
+            try { oldMeta = await readPostMeta(wp, resolved.type, resolved.id, plugin); } catch (_) {}
+
+            await writePostMeta(wp, resolved.type, resolved.id, plugin, {
+              title: row.newTitle,
+              description: row.newDescription,
+            });
+
+            rowUpdate[`rows.${idx}.resolvedPostId`]   = resolved.id;
+            rowUpdate[`rows.${idx}.resolvedPostType`] = resolved.type;
           }
 
-          // 3. Write new meta
-          await writePostMeta(wp, postType, postId, plugin, {
-            title: row.newTitle,
-            description: row.newDescription,
-          });
+          rowUpdate[`rows.${idx}.oldTitle`]       = oldMeta.title;
+          rowUpdate[`rows.${idx}.oldDescription`] = oldMeta.description;
+          rowUpdate[`rows.${idx}.status`]         = 'success';
 
-          // 4. Mutate row in place (Mongoose will pick up the change on save)
-          job.rows[idx].resolvedPostId = postId;
-          job.rows[idx].resolvedPostType = postType;
-          job.rows[idx].oldTitle = oldMeta.title;
-          job.rows[idx].oldDescription = oldMeta.description;
-          job.rows[idx].status = 'success';
-          job.rows[idx].processedAt = new Date();
+          successCount++;
+          await Job.findByIdAndUpdate(jobId, { $set: rowUpdate, $inc: { successCount: 1 } });
 
-          // 5. Audit log entries (one per field for granular rollback)
           await AuditLog.insertMany([
             {
-              site: site._id,
-              job: job._id,
-              postId,
-              postType,
-              postUrl: row.postUrl,
-              plugin,
+              site: site._id, job: job._id,
+              postId: resolved.id,
+              postType: rowUpdate[`rows.${idx}.resolvedPostType`],
+              postUrl: row.postUrl, plugin,
               field: 'title',
-              oldValue: oldMeta.title,
-              newValue: row.newTitle,
+              oldValue: oldMeta.title, newValue: row.newTitle,
               performedBy: userId,
             },
             {
-              site: site._id,
-              job: job._id,
-              postId,
-              postType,
-              postUrl: row.postUrl,
-              plugin,
+              site: site._id, job: job._id,
+              postId: resolved.id,
+              postType: rowUpdate[`rows.${idx}.resolvedPostType`],
+              postUrl: row.postUrl, plugin,
               field: 'description',
-              oldValue: oldMeta.description,
-              newValue: row.newDescription,
+              oldValue: oldMeta.description, newValue: row.newDescription,
               performedBy: userId,
             },
           ]);
 
           await delay(PER_REQUEST_DELAY);
         } catch (err) {
-          job.rows[idx].status = 'failed';
-          job.rows[idx].error = err.response?.data?.message || err.message;
-          job.rows[idx].processedAt = new Date();
+          rowUpdate[`rows.${idx}.status`] = 'failed';
+          rowUpdate[`rows.${idx}.error`]  = err.response?.data?.message || err.message;
+
+          failedCount++;
+          await Job.findByIdAndUpdate(jobId, { $set: rowUpdate, $inc: { failedCount: 1 } });
         }
+
+        emitter.emit('progress', {
+          successCount,
+          failedCount,
+          skippedCount,
+          totalRows: job.totalRows,
+          rowIndex: idx,
+          rowStatus: rowUpdate[`rows.${idx}.status`],
+        });
       })
     )
   );
 
-  job.successCount = job.rows.filter((r) => r.status === 'success').length;
-  job.failedCount = job.rows.filter((r) => r.status === 'failed').length;
-  job.status = 'completed';
-  job.completedAt = new Date();
-  job.markModified('rows');
-  await job.save();
+  const wasCancelled = cancelRequests.has(String(jobId));
+  cancelRequests.delete(String(jobId));
 
-  return job;
+  const finalStatus = wasCancelled ? 'cancelled' : 'completed';
+  await Job.findByIdAndUpdate(jobId, { status: finalStatus, completedAt: new Date() });
+
+  emitter.emit('done', { status: finalStatus, successCount, failedCount, skippedCount, totalRows: job.totalRows });
+  setTimeout(() => jobEmitters.delete(String(jobId)), 5000);
 };
 
-/**
- * Roll back every successful row in a job by re-writing the previously stored
- * oldTitle / oldDescription back to WordPress.
- */
 export const rollbackJob = async (jobId, userId) => {
   const job = await Job.findById(jobId).populate('site');
   if (!job) throw new Error('Job not found');
@@ -128,18 +165,26 @@ export const rollbackJob = async (jobId, userId) => {
     rows.map((row) =>
       limit(async () => {
         try {
-          await writePostMeta(wp, row.resolvedPostType, row.resolvedPostId, plugin, {
-            title: row.oldTitle || '',
-            description: row.oldDescription || '',
-          });
+          const isTaxonomy = String(row.resolvedPostType || '').startsWith('taxonomy:');
+
+          if (isTaxonomy) {
+            const restBase = row.resolvedPostType.replace('taxonomy:', '');
+            await writeTermMeta(wp, restBase, row.resolvedPostId, {
+              title: row.oldTitle || '',
+              description: row.oldDescription || '',
+            });
+          } else {
+            await writePostMeta(wp, row.resolvedPostType, row.resolvedPostId, plugin, {
+              title: row.oldTitle || '',
+              description: row.oldDescription || '',
+            });
+          }
 
           await AuditLog.create({
-            site: job.site._id,
-            job: job._id,
+            site: job.site._id, job: job._id,
             postId: row.resolvedPostId,
             postType: row.resolvedPostType,
-            postUrl: row.postUrl,
-            plugin,
+            postUrl: row.postUrl, plugin,
             field: 'both',
             oldValue: `${row.newTitle} | ${row.newDescription}`,
             newValue: `${row.oldTitle || ''} | ${row.oldDescription || ''}`,

@@ -5,7 +5,10 @@ import User from '../models/User.js';
 export const requireAuth = async (req, res, next) => {
   try {
     const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    // SSE clients can't set custom headers, so accept token from query param too
+    const token = header.startsWith('Bearer ')
+      ? header.slice(7)
+      : (req.query.token || null);
     if (!token) return res.status(401).json({ error: 'Missing auth token' });
 
     const decoded = jwt.verify(token, env.JWT_SECRET);

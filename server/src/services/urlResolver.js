@@ -1,14 +1,14 @@
-// Order matters: most common first.
-const POST_TYPES = ['posts', 'pages', 'product'];
+// Static post types to try first (fastest, most common)
+const STATIC_POST_TYPES = ['posts', 'pages', 'product'];
 
 /**
- * Extract a slug from a full post URL.
- * https://site.com/category/best-shoes/  -> "best-shoes"
+ * Extract the final non-empty path segment as the slug.
+ * https://site.com/2019/06/my-post/ → "my-post"
+ * https://site.com/topics/category/  → "category"
  */
 export const extractSlug = (url) => {
   try {
-    const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
+    const parts = new URL(url).pathname.split('/').filter(Boolean);
     return parts[parts.length - 1] || '';
   } catch {
     return String(url).replace(/\/$/, '').split('/').pop() || '';
@@ -16,28 +16,101 @@ export const extractSlug = (url) => {
 };
 
 /**
- * Resolve a post URL to { id, type, slug } by searching by slug across known post types.
+ * Fetch the list of custom post types registered on the WP site that expose
+ * a REST base, excluding the static types we already try.
+ * Returns an array of rest_base strings.
+ */
+const discoverCustomPostTypes = async (wp) => {
+  try {
+    const res = await wp.get('/wp-json/wp/v2/types', {
+      params: { context: 'edit' },
+      timeout: 8000,
+    });
+    return Object.values(res.data || {})
+      .filter((t) => t.rest_base && !STATIC_POST_TYPES.includes(t.rest_base))
+      .map((t) => t.rest_base);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Fetch the list of public taxonomies registered on the WP site.
+ * Returns an array of { name, restBase } objects.
+ */
+const discoverTaxonomies = async (wp) => {
+  try {
+    const res = await wp.get('/wp-json/wp/v2/taxonomies', { timeout: 8000 });
+    return Object.values(res.data || {})
+      .filter((t) => t.rest_base)
+      .map((t) => ({ name: t.slug, restBase: t.rest_base }));
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Search a single post type for a slug.
+ * Passes `status=any` so drafts and scheduled posts are included.
+ * Returns the post object or null.
+ */
+const findPostBySlug = async (wp, restBase, slug) => {
+  try {
+    const res = await wp.get(`/wp-json/wp/v2/${restBase}`, {
+      params: { slug, status: 'any', _fields: 'id,slug,link', context: 'edit' },
+    });
+    if (Array.isArray(res.data) && res.data.length > 0) return res.data[0];
+  } catch {
+    // 404 = post type not registered; other errors = keep trying
+  }
+  return null;
+};
+
+/**
+ * Search a taxonomy for a term with the given slug.
+ * Returns the term object or null.
+ */
+const findTermBySlug = async (wp, restBase, slug) => {
+  try {
+    const res = await wp.get(`/wp-json/wp/v2/${restBase}`, {
+      params: { slug, _fields: 'id,slug,link' },
+    });
+    if (Array.isArray(res.data) && res.data.length > 0) return res.data[0];
+  } catch {}
+  return null;
+};
+
+/**
+ * Resolve a post/page/term URL to an object describing how to update it.
+ *
+ * Returns one of:
+ *   { kind: 'post', id, type }          — standard post/page/CPT
+ *   { kind: 'term', id, taxonomy, restBase } — category/tag/custom taxonomy term
+ *
  * Throws if no match is found.
  */
 export const resolvePostFromUrl = async (wp, postUrl) => {
   const slug = extractSlug(postUrl);
   if (!slug) throw new Error(`Could not extract slug from URL: ${postUrl}`);
 
-  for (const type of POST_TYPES) {
-    try {
-      const res = await wp.get(`/wp-json/wp/v2/${type}`, {
-        params: { slug, _fields: 'id,link,slug', context: 'edit' },
-      });
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        return { id: res.data[0].id, type, slug };
-      }
-    } catch (err) {
-      // 404 = post type not registered on this site (e.g., 'product' on a non-Woo site)
-      // Any other status we surface only if we never find a match.
-      if (err.response?.status && err.response.status !== 404) {
-        // keep trying other types
-      }
-    }
+  // --- 1. Static post types (includes status=any for draft/scheduled) ---
+  for (const restBase of STATIC_POST_TYPES) {
+    const post = await findPostBySlug(wp, restBase, slug);
+    if (post) return { kind: 'post', id: post.id, type: restBase };
+  }
+
+  // --- 2. Dynamically discovered custom post types ---
+  const customTypes = await discoverCustomPostTypes(wp);
+  for (const restBase of customTypes) {
+    const post = await findPostBySlug(wp, restBase, slug);
+    if (post) return { kind: 'post', id: post.id, type: restBase };
+  }
+
+  // --- 3. Taxonomy terms (categories, tags, custom taxonomies) ---
+  const taxonomies = await discoverTaxonomies(wp);
+  for (const tax of taxonomies) {
+    const term = await findTermBySlug(wp, tax.restBase, slug);
+    if (term) return { kind: 'term', id: term.id, taxonomy: tax.name, restBase: tax.restBase };
   }
 
   throw new Error(`Post not found for URL: ${postUrl}`);

@@ -9,6 +9,8 @@ import {
   runJob,
   rollbackJobController,
   downloadReport,
+  streamJobProgress,
+  cancelJob,
 } from '../controllers/jobController.js';
 
 const router = Router();
@@ -21,5 +23,7 @@ router.put('/:id/rows', updateJobRows);
 router.post('/:id/run', runJob);
 router.post('/:id/rollback', rollbackJobController);
 router.get('/:id/report', downloadReport);
+router.get('/:id/events', streamJobProgress);   // SSE real-time progress
+router.post('/:id/cancel', cancelJob);          // request cancellation
 
 export default router;

@@ -1,7 +1,7 @@
 import Job from '../models/Job.js';
 import Site from '../models/Site.js';
 import { parseMetaCsv } from '../services/csvParser.js';
-import { runBulkJob, rollbackJob } from '../services/bulkRunner.js';
+import { runBulkJob, rollbackJob, getJobEmitter, requestCancel } from '../services/bulkRunner.js';
 
 export const uploadCsvJob = async (req, res, next) => {
   try {
@@ -91,7 +91,6 @@ export const runJob = async (req, res, next) => {
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (job.status === 'running') return res.status(400).json({ error: 'Job already running' });
 
-    // Fire-and-forget — the runner mutates the job document as it progresses
     runBulkJob(job._id, req.user._id).catch((err) => {
       console.error('[bulkRunner] job failed', err);
     });
@@ -142,5 +141,71 @@ export const downloadReport = async (req, res, next) => {
     res.send(header + body);
   } catch (err) {
     next(err);
+  }
+};
+
+export const cancelJob = async (req, res, next) => {
+  try {
+    const job = await Job.findOne({ _id: req.params.id, createdBy: req.user._id });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'running') return res.status(400).json({ error: 'Job is not running' });
+
+    requestCancel(job._id.toString());
+    res.json({ ok: true, message: 'Cancel requested — remaining rows will be skipped' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * SSE endpoint — streams real-time progress events while a job is running.
+ * EventSource can't send custom headers, so the token is accepted via ?token=
+ * (handled in requireAuth middleware).
+ */
+export const streamJobProgress = async (req, res) => {
+  try {
+    const job = await Job.findOne({ _id: req.params.id, createdBy: req.user._id });
+    if (!job) { res.status(404).end(); return; }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+    res.flushHeaders();
+
+    const send = (type, data) =>
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+
+    // Immediately send current DB state so the client has something to render
+    send('snapshot', {
+      status: job.status,
+      successCount: job.successCount,
+      failedCount: job.failedCount,
+      totalRows: job.totalRows,
+    });
+
+    const emitter = getJobEmitter(String(job._id));
+
+    // Job isn't running (already done, or emitter cleaned up) — close immediately
+    if (!emitter) {
+      send('done', { successCount: job.successCount, failedCount: job.failedCount, totalRows: job.totalRows });
+      res.end();
+      return;
+    }
+
+    const onProgress = (data) => send('progress', data);
+    const onDone = (data) => { send('done', data); res.end(); };
+
+    emitter.on('progress', onProgress);
+    emitter.once('done', onDone);
+
+    // Clean up listeners if the client disconnects early
+    req.on('close', () => {
+      emitter.off('progress', onProgress);
+      emitter.off('done', onDone);
+    });
+  } catch (err) {
+    console.error('[SSE] error', err);
+    res.end();
   }
 };

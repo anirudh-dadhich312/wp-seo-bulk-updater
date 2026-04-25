@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.0.0
+ * Version:     1.1.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -153,6 +153,131 @@ add_action('rest_api_init', function () {
         },
         'schema' => [
             'type' => 'object',
+            'properties' => [
+                'title'       => ['type' => 'string'],
+                'description' => ['type' => 'string'],
+            ],
+        ],
+    ]);
+});
+
+/**
+ * Expose a `seo_meta` REST field on every public taxonomy term so that
+ * category / tag / custom taxonomy SEO metadata can be read and written
+ * remotely via the bulk updater.
+ *
+ * Read/write is routed through each active SEO plugin's own PHP API so
+ * that internal caches, hooks, and custom tables are updated correctly.
+ *
+ * Plugin priority (first match wins):
+ *   1. Yoast SEO   → wpseo_taxonomy_meta option
+ *   2. Rank Math   → term meta (rank_math_title / rank_math_description)
+ *   3. AIOSEO 4+   → wp_aioseo_terms table via AIOSEO PHP API
+ *   4. Generic     → term meta (_seo_title / _seo_description)
+ */
+add_action('rest_api_init', function () {
+    $taxonomies = array_keys(get_taxonomies(['public' => true], 'names'));
+    if (empty($taxonomies)) return;
+
+    // ── Helper: read via Yoast taxonomy meta option ──────────────────────────
+    $yoast_read = function ($term_id, $taxonomy) {
+        if (!class_exists('WPSEO_Taxonomy_Meta')) return null;
+        $title = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'title');
+        $desc  = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'desc');
+        if ($title !== false || $desc !== false) {
+            return ['title' => (string)($title ?: ''), 'description' => (string)($desc ?: '')];
+        }
+        return null;
+    };
+
+    // ── Helper: write via Yoast taxonomy meta option ─────────────────────────
+    $yoast_write = function ($term_id, $taxonomy, $title, $desc) {
+        if (!class_exists('WPSEO_Taxonomy_Meta')) return false;
+        $option_key = 'wpseo_taxonomy_meta';
+        $all_meta   = (array) get_option($option_key, []);
+        if (!isset($all_meta[$taxonomy]))           $all_meta[$taxonomy] = [];
+        if (!isset($all_meta[$taxonomy][$term_id])) $all_meta[$taxonomy][$term_id] = [];
+        if ($title !== null) $all_meta[$taxonomy][$term_id]['wpseo_title'] = $title;
+        if ($desc  !== null) $all_meta[$taxonomy][$term_id]['wpseo_desc']  = $desc;
+        update_option($option_key, $all_meta);
+        return true;
+    };
+
+    register_rest_field($taxonomies, 'seo_meta', [
+        'get_callback' => function ($term) use ($yoast_read) {
+            $term_id  = (int) $term['id'];
+            $taxonomy = $term['taxonomy'] ?? '';
+
+            // 1. Yoast
+            $yoast = $yoast_read($term_id, $taxonomy);
+            if ($yoast !== null) return $yoast;
+
+            // 2. Rank Math
+            if (defined('RANK_MATH_VERSION')) {
+                return [
+                    'title'       => (string) get_term_meta($term_id, 'rank_math_title', true),
+                    'description' => (string) get_term_meta($term_id, 'rank_math_description', true),
+                ];
+            }
+
+            // 3. AIOSEO (term-level API)
+            if (function_exists('aioseo') && method_exists(aioseo()->helpers, 'getTermMeta')) {
+                try {
+                    $obj = aioseo()->helpers->getTermMeta($term_id);
+                    return [
+                        'title'       => isset($obj->title)       ? (string) $obj->title       : '',
+                        'description' => isset($obj->description) ? (string) $obj->description : '',
+                    ];
+                } catch (\Throwable $e) {}
+            }
+
+            // 4. Generic fallback
+            return [
+                'title'       => (string) get_term_meta($term_id, '_seo_title', true),
+                'description' => (string) get_term_meta($term_id, '_seo_description', true),
+            ];
+        },
+
+        'update_callback' => function ($value, $term) use ($yoast_write) {
+            if (!current_user_can('manage_categories')) {
+                return new WP_Error('rest_forbidden', 'Insufficient permissions', ['status' => 403]);
+            }
+
+            $term_id  = (int) $term->term_id;
+            $taxonomy = (string) $term->taxonomy;
+            $title    = isset($value['title'])       ? sanitize_text_field($value['title'])       : null;
+            $desc     = isset($value['description']) ? sanitize_text_field($value['description']) : null;
+
+            // 1. Yoast
+            if ($yoast_write($term_id, $taxonomy, $title, $desc)) return true;
+
+            // 2. Rank Math
+            if (defined('RANK_MATH_VERSION')) {
+                if ($title !== null) update_term_meta($term_id, 'rank_math_title', $title);
+                if ($desc  !== null) update_term_meta($term_id, 'rank_math_description', $desc);
+                wp_cache_delete('rank_math_term_meta_' . $term_id);
+                return true;
+            }
+
+            // 3. AIOSEO
+            if (function_exists('aioseo') && method_exists(aioseo()->helpers, 'getTermMeta')) {
+                try {
+                    $obj = aioseo()->helpers->getTermMeta($term_id);
+                    if ($title !== null) $obj->title       = $title;
+                    if ($desc  !== null) $obj->description = $desc;
+                    $obj->save();
+                    return true;
+                } catch (\Throwable $e) {}
+            }
+
+            // 4. Generic fallback
+            if ($title !== null) update_term_meta($term_id, '_seo_title', $title);
+            if ($desc  !== null) update_term_meta($term_id, '_seo_description', $desc);
+            return true;
+        },
+
+        'schema' => [
+            'type'       => 'object',
             'properties' => [
                 'title'       => ['type' => 'string'],
                 'description' => ['type' => 'string'],
