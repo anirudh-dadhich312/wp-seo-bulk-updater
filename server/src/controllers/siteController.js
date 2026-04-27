@@ -2,10 +2,12 @@ import Site from '../models/Site.js';
 import { encrypt } from '../services/cryptoService.js';
 import { testConnection } from '../services/wpClient.js';
 import { detectSEOPlugin, detectForSite } from '../services/pluginDetector.js';
+import { buildAccessFilter } from '../services/accessControl.js';
 
 export const listSites = async (req, res, next) => {
   try {
-    const sites = await Site.find({ createdBy: req.user._id }).sort('-createdAt');
+    const filter = await buildAccessFilter(req.user);
+    const sites = await Site.find(filter).sort('-createdAt').lean();
     res.json(sites);
   } catch (err) {
     next(err);
@@ -14,7 +16,8 @@ export const listSites = async (req, res, next) => {
 
 export const getSite = async (req, res, next) => {
   try {
-    const site = await Site.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const filter = await buildAccessFilter(req.user);
+    const site = await Site.findOne({ _id: req.params.id, ...filter });
     if (!site) return res.status(404).json({ error: 'Site not found' });
     res.json(site);
   } catch (err) {
@@ -24,7 +27,7 @@ export const getSite = async (req, res, next) => {
 
 export const createSite = async (req, res, next) => {
   try {
-    const { name, siteUrl, username, appPassword, notes } = req.body;
+    const { name, siteUrl, username, appPassword, notes, teamId } = req.body;
     if (!name || !siteUrl || !username || !appPassword) {
       return res.status(400).json({ error: 'name, siteUrl, username, appPassword are required' });
     }
@@ -34,19 +37,19 @@ export const createSite = async (req, res, next) => {
       return res.status(400).json({ error: `WordPress connection failed: ${conn.error}` });
     }
 
-    // 2. Auto-detect SEO plugin
     const plugin = await detectSEOPlugin(siteUrl, username, appPassword);
 
-    // 3. Persist (password is encrypted at rest)
     const site = await Site.create({
       name,
-      siteUrl: siteUrl.replace(/\/$/, ''),
+      siteUrl:              siteUrl.replace(/\/$/, ''),
       username,
       appPasswordEncrypted: encrypt(appPassword),
-      detectedPlugin: plugin,
-      lastDetectedAt: new Date(),
+      detectedPlugin:       plugin,
+      lastDetectedAt:       new Date(),
       notes,
-      createdBy: req.user._id,
+      createdBy:    req.user._id,
+      organization: req.user.organization,
+      team:         teamId || req.user.team || undefined,
     });
 
     res.status(201).json(site);
@@ -57,22 +60,23 @@ export const createSite = async (req, res, next) => {
 
 export const updateSite = async (req, res, next) => {
   try {
-    const { name, siteUrl, username, appPassword, notes } = req.body;
+    const { name, siteUrl, username, appPassword, notes, teamId } = req.body;
     const update = {};
-    if (name) update.name = name;
-    if (siteUrl) update.siteUrl = siteUrl.replace(/\/$/, '');
-    if (username) update.username = username;
-    if (appPassword) update.appPasswordEncrypted = encrypt(appPassword);
-    if (notes !== undefined) update.notes = notes;
+    if (name)              update.name     = name;
+    if (siteUrl)           update.siteUrl  = siteUrl.replace(/\/$/, '');
+    if (username)          update.username = username;
+    if (appPassword)       update.appPasswordEncrypted = encrypt(appPassword);
+    if (notes !== undefined) update.notes  = notes;
+    if (teamId !== undefined) update.team  = teamId || null;
 
+    const accessFilter = await buildAccessFilter(req.user);
     let site = await Site.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      { _id: req.params.id, ...accessFilter },
       update,
       { new: true }
     );
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
-    // If connection details changed, re-detect the active SEO plugin automatically
     if (siteUrl || username || appPassword) {
       try {
         const plugin = await detectForSite(site);
@@ -92,7 +96,8 @@ export const updateSite = async (req, res, next) => {
 
 export const deleteSite = async (req, res, next) => {
   try {
-    const site = await Site.findOneAndDelete({ _id: req.params.id, createdBy: req.user._id });
+    const accessFilter = await buildAccessFilter(req.user);
+    const site = await Site.findOneAndDelete({ _id: req.params.id, ...accessFilter });
     if (!site) return res.status(404).json({ error: 'Site not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -102,7 +107,8 @@ export const deleteSite = async (req, res, next) => {
 
 export const redetectPlugin = async (req, res, next) => {
   try {
-    const site = await Site.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const accessFilter = await buildAccessFilter(req.user);
+    const site = await Site.findOne({ _id: req.params.id, ...accessFilter });
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     const plugin = await detectForSite(site);

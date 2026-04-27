@@ -22,8 +22,10 @@ const jobRowSchema = new mongoose.Schema(
 
 const jobSchema = new mongoose.Schema(
   {
-    site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', required: true },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    site:         { type: mongoose.Schema.Types.ObjectId, ref: 'Site', required: true },
+    createdBy:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
+    team:         { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     status: {
       type: String,
       enum: ['draft', 'running', 'completed', 'failed', 'cancelled'],
@@ -39,5 +41,9 @@ const jobSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+jobSchema.index({ createdBy: 1, createdAt: -1 });
+jobSchema.index({ site: 1,      createdAt: -1 });
+jobSchema.index({ createdBy: 1, site: 1, status: 1 });
 
 export default mongoose.model('Job', jobSchema);

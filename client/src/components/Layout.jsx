@@ -4,17 +4,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap, LayoutDashboard, Globe, UploadCloud,
   ClipboardList, LogOut, Menu, X, ChevronRight, Sun, Moon,
+  Users, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
 const DashboardBG = lazy(() => import('./DashboardBG'));
 
-const NAV = [
-  { to: '/',            end: true, icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/sites',                  icon: Globe,            label: 'Client Sites' },
-  { to: '/bulk-update',            icon: UploadCloud,      label: 'Bulk Update' },
-  { to: '/audit',                  icon: ClipboardList,    label: 'Audit Log' },
+const ROLE_LEVELS = { super_admin: 4, admin: 3, team_leader: 2, team_member: 1, operator: 1 };
+const hasRole = (user, min) => (ROLE_LEVELS[user?.role] ?? 0) >= (ROLE_LEVELS[min] ?? 0);
+
+const BASE_NAV = [
+  { to: '/',            end: true,  icon: LayoutDashboard, label: 'Dashboard',   minRole: null },
+  { to: '/sites',                   icon: Globe,            label: 'Client Sites', minRole: null },
+  { to: '/bulk-update',             icon: UploadCloud,      label: 'Bulk Update',  minRole: null },
+  { to: '/audit',                   icon: ClipboardList,    label: 'Audit Log',    minRole: null },
+  { to: '/teams',                   icon: UsersRound,       label: 'Teams',        minRole: 'team_leader' },
+  { to: '/users',                   icon: Users,            label: 'Users',        minRole: 'admin' },
 ];
 
 function Sidebar({ onClose }) {
@@ -50,7 +56,7 @@ function Sidebar({ onClose }) {
         <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 pt-2 pb-1.5">
           Navigation
         </p>
-        {NAV.map(({ to, end, icon: Icon, label }) => (
+        {BASE_NAV.filter(({ minRole }) => !minRole || hasRole(user, minRole)).map(({ to, end, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
@@ -100,7 +106,7 @@ function Sidebar({ onClose }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-700 dark:text-gray-300 truncate leading-none">{user?.email}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5 capitalize">{user?.role || 'admin'}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 capitalize">{user?.role?.replace(/_/g, ' ') || 'admin'}</p>
           </div>
           <button
             onClick={handleLogout}

@@ -2,6 +2,7 @@ import Job from '../models/Job.js';
 import Site from '../models/Site.js';
 import { parseMetaCsv } from '../services/csvParser.js';
 import { runBulkJob, rollbackJob, getJobEmitter, requestCancel } from '../services/bulkRunner.js';
+import { buildAccessFilter } from '../services/accessControl.js';
 
 export const uploadCsvJob = async (req, res, next) => {
   try {
@@ -9,21 +10,24 @@ export const uploadCsvJob = async (req, res, next) => {
     if (!siteId) return res.status(400).json({ error: 'siteId is required' });
     if (!req.file) return res.status(400).json({ error: 'CSV file is required' });
 
-    const site = await Site.findOne({ _id: siteId, createdBy: req.user._id });
+    const siteFilter = await buildAccessFilter(req.user);
+    const site = await Site.findOne({ _id: siteId, ...siteFilter });
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     const rows = parseMetaCsv(req.file.buffer);
 
     const job = await Job.create({
-      site: site._id,
-      createdBy: req.user._id,
-      status: 'draft',
-      totalRows: rows.length,
+      site:         site._id,
+      createdBy:    req.user._id,
+      organization: site.organization,
+      team:         site.team,
+      status:       'draft',
+      totalRows:    rows.length,
       rows: rows.map((r) => ({
-        postUrl: r.postUrl,
-        newTitle: r.newTitle,
+        postUrl:        r.postUrl,
+        newTitle:       r.newTitle,
         newDescription: r.newDescription,
-        status: 'pending',
+        status:         'pending',
       })),
     });
 
@@ -35,13 +39,14 @@ export const uploadCsvJob = async (req, res, next) => {
 
 export const listJobs = async (req, res, next) => {
   try {
-    const filter = { createdBy: req.user._id };
+    const filter = await buildAccessFilter(req.user);
     if (req.query.siteId) filter.site = req.query.siteId;
 
     const jobs = await Job.find(filter)
       .populate('site', 'name siteUrl detectedPlugin')
       .sort('-createdAt')
-      .select('-rows');
+      .select('-rows')
+      .lean();
     res.json(jobs);
   } catch (err) {
     next(err);
@@ -50,8 +55,10 @@ export const listJobs = async (req, res, next) => {
 
 export const getJob = async (req, res, next) => {
   try {
-    const job = await Job.findOne({ _id: req.params.id, createdBy: req.user._id })
-      .populate('site', 'name siteUrl detectedPlugin');
+    const accessFilter = await buildAccessFilter(req.user);
+    const job = await Job.findOne({ _id: req.params.id, ...accessFilter })
+      .populate('site', 'name siteUrl detectedPlugin')
+      .lean();
     if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(job);
   } catch (err) {
@@ -64,21 +71,19 @@ export const updateJobRows = async (req, res, next) => {
     const { rows } = req.body;
     if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows must be an array' });
 
-    const job = await Job.findOne({
-      _id: req.params.id,
-      createdBy: req.user._id,
-      status: 'draft',
-    });
-    if (!job) return res.status(404).json({ error: 'Editable draft job not found' });
-
-    job.rows = rows.map((r) => ({
+    const newRows = rows.map((r) => ({
       postUrl: String(r.postUrl || '').trim(),
       newTitle: String(r.newTitle || '').trim(),
       newDescription: String(r.newDescription || '').trim(),
       status: 'pending',
     }));
-    job.totalRows = job.rows.length;
-    await job.save();
+
+    const job = await Job.findOneAndUpdate(
+      { _id: req.params.id, createdBy: req.user._id, status: 'draft' },
+      { rows: newRows, totalRows: newRows.length },
+      { new: true }
+    ).lean();
+    if (!job) return res.status(404).json({ error: 'Editable draft job not found' });
     res.json(job);
   } catch (err) {
     next(err);
@@ -115,7 +120,7 @@ export const rollbackJobController = async (req, res, next) => {
 
 export const downloadReport = async (req, res, next) => {
   try {
-    const job = await Job.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const job = await Job.findOne({ _id: req.params.id, createdBy: req.user._id }).lean();
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;

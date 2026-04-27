@@ -64,8 +64,17 @@ export default function JobDetail() {
         const msg = JSON.parse(e.data);
 
         if (msg.type === 'snapshot') {
-          // Initial state from server — sync job status without a full reload
-          setJob((prev) => prev ? { ...prev, status: msg.status } : prev);
+          setJob((prev) => {
+            if (!prev) return prev;
+            // Never downgrade from 'running' to 'draft' — the DB write inside
+            // runBulkJob is async and may not have landed by the time we connect.
+            const status = prev.status === 'running' && msg.status === 'draft'
+              ? 'running'
+              : msg.status;
+            return { ...prev, status };
+          });
+          // Seed live counts from snapshot so progress shows immediately
+          setLiveStats({ successCount: msg.successCount, failedCount: msg.failedCount });
         }
 
         if (msg.type === 'progress') {

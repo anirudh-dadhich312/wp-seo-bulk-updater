@@ -17,6 +17,9 @@ const auditLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-auditLogSchema.index({ site: 1, createdAt: -1 });
+auditLogSchema.index({ site: 1,      createdAt: -1 });
+auditLogSchema.index({ performedBy: 1, createdAt: -1 });
+// Auto-delete audit logs older than 90 days so the collection never bloats
+auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 export default mongoose.model('AuditLog', auditLogSchema);
