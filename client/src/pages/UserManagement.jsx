@@ -1,9 +1,58 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, UserPlus, Trash2, Copy, Check, X, ChevronDown, AlertCircle, Shield, Crown, UserCheck, User } from 'lucide-react';
+import { Users, UserPlus, Trash2, Copy, Check, X, ChevronDown, AlertCircle, Shield, Crown, UserCheck, User, Info, Bell, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+
+/* ─── Role-scoped role options ──────────────────────────────── */
+function getRoleOptions(meRole) {
+  if (meRole === 'super_admin') {
+    return [
+      { value: 'admin',       label: 'Admin' },
+      { value: 'team_leader', label: 'Team Leader' },
+      { value: 'team_member', label: 'Team Member' },
+    ];
+  }
+  // admin can only invite up to team_leader
+  return [
+    { value: 'team_leader', label: 'Team Leader' },
+    { value: 'team_member', label: 'Team Member' },
+  ];
+}
+
+/* ─── Inline custom select (avoids OS white dropdown) ──────── */
+function CustomSelect({ value, onChange, options, placeholder = 'Select…', required }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const selected = options.find((o) => o.value === value);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between px-3.5 py-2.5 border rounded-xl text-sm focus:outline-none transition-colors ${!selected && required ? 'border-gray-200 dark:border-white/10' : 'border-gray-200 dark:border-white/10'} bg-gray-50 dark:bg-white/[0.05] focus:border-indigo-500`}>
+        <span className={selected ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{selected?.label || placeholder}</span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-full z-50 bg-white dark:bg-[#1c1c3a] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden">
+          {options.map((opt) => (
+            <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3.5 py-2.5 text-sm transition-colors flex items-center justify-between ${opt.value === value ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06]'}`}>
+              {opt.label}
+              {opt.value === value && <Check className="w-3.5 h-3.5" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ROLE_CFG = {
   super_admin:  { label: 'Super Admin',  color: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25', icon: Crown },
@@ -94,7 +143,11 @@ function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
           className="w-36 bg-white dark:bg-[#1a1a35] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden"
         >
-          {EDITABLE_ROLES.filter((r) => meRole === 'super_admin' || r.value !== 'super_admin').map((r) => {
+          {EDITABLE_ROLES.filter((r) => {
+            if (meRole === 'super_admin') return true;
+            // admin can only assign up to team_leader
+            return !['super_admin', 'admin'].includes(r.value);
+          }).map((r) => {
             const rc = ROLE_CFG[r.value];
             const RIcon = rc.icon;
             return (
@@ -115,15 +168,23 @@ function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
   );
 }
 
-function InviteModal({ teams, onClose, onInvited }) {
-  const [form, setForm] = useState({ email: '', name: '', role: 'team_member', teamId: '' });
+function InviteModal({ teams, meRole, onClose, onInvited }) {
+  const [form,    setForm]    = useState({ email: '', name: '', role: '', teamId: '' });
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');
   const [result,  setResult]  = useState(null);
   const [copied,  setCopied]  = useState(false);
 
+  const roleOptions = getRoleOptions(meRole);
+
+  const teamOptions = [
+    { value: '', label: 'No team' },
+    ...teams.map((t) => ({ value: t._id, label: t.name })),
+  ];
+
   const submit = async (e) => {
     e.preventDefault();
+    if (!form.role) { setErr('Please select a role before sending the invite.'); return; }
     setErr(''); setLoading(true);
     try {
       const { data } = await api.post('/users/invite', form);
@@ -144,61 +205,53 @@ function InviteModal({ teams, onClose, onInvited }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm">
       <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md bg-white dark:bg-[#12122a] border border-gray-100 dark:border-white/10 rounded-2xl shadow-2xl p-6 space-y-5">
-
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Invite Team Member</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X className="w-5 h-5" />
-          </button>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Invite Member</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
         </div>
 
         {result ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
-              <Check className="w-4 h-4 flex-shrink-0" /> User invited! Share this link with them:
+              <Check className="w-4 h-4 flex-shrink-0" /> Invite created! Share this link:
             </div>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 truncate">{result}</code>
-              <button onClick={copy}
-                className="flex-shrink-0 w-9 h-9 flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition">
+              <button onClick={copy} className="flex-shrink-0 w-9 h-9 flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition">
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
-            <button onClick={onClose} className="w-full py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition">Done</button>
+            <button onClick={onClose} className="w-full py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition">Done</button>
           </div>
         ) : (
           <form onSubmit={submit} className="space-y-4">
             {err && <p className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400"><AlertCircle className="w-4 h-4" />{err}</p>}
-            {[['Email', 'email', 'email', true], ['Name', 'name', 'text', false]].map(([label, key, type, required]) => (
+            {[['Email *', 'email', 'email', true], ['Name', 'name', 'text', false]].map(([label, key, type, req]) => (
               <div key={key}>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{label}{required && ' *'}</label>
-                <input type={type} required={required} value={form[key]} onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{label}</label>
+                <input type={type} required={req} value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                   className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 transition-colors" />
               </div>
             ))}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Role *</label>
-              <div className="relative">
-                <select value={form.role} onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 pr-8 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors">
-                  <option value="team_member">Team Member</option>
-                  <option value="team_leader">Team Leader</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Role <span className="text-red-400">*</span></label>
+              <CustomSelect
+                value={form.role}
+                onChange={(v) => setForm((f) => ({ ...f, role: v }))}
+                options={roleOptions}
+                placeholder="— choose a role —"
+                required
+              />
             </div>
             {teams.length > 0 && (
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Assign to Team</label>
-                <div className="relative">
-                  <select value={form.teamId} onChange={(e) => setForm(f => ({ ...f, teamId: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 pr-8 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors">
-                    <option value="">No team</option>
-                    {teams.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                </div>
+                <CustomSelect
+                  value={form.teamId}
+                  onChange={(v) => setForm((f) => ({ ...f, teamId: v }))}
+                  options={teamOptions}
+                  placeholder="No team"
+                />
               </div>
             )}
             <div className="flex gap-2 pt-1">
@@ -216,16 +269,31 @@ function InviteModal({ teams, onClose, onInvited }) {
 
 export default function UserManagement() {
   const { user: me } = useAuth();
-  const [users,       setUsers]       = useState([]);
-  const [teams,       setTeams]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showInvite,  setShowInvite]  = useState(false);
-  const [removing,    setRemoving]    = useState(null);
+  const [users,        setUsers]        = useState([]);
+  const [teams,        setTeams]        = useState([]);
+  const [requests,     setRequests]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showInvite,   setShowInvite]   = useState(false);
+  const [removing,     setRemoving]     = useState(null);
+  const [approving,    setApproving]    = useState(null);
+  const [rejecting,    setRejecting]    = useState(null);
+  const [approvedUrl,  setApprovedUrl]  = useState(null);
+  const [copiedUrl,    setCopiedUrl]    = useState(false);
 
-  const load = () =>
-    Promise.all([api.get('/users'), api.get('/teams')])
-      .then(([u, t]) => { setUsers(u.data); setTeams(t.data); })
-      .finally(() => setLoading(false));
+  const isAdmin = ['super_admin', 'admin'].includes(me?.role);
+
+  const load = async () => {
+    try {
+      const calls = [api.get('/users'), api.get('/teams')];
+      if (isAdmin) calls.push(api.get('/invite-requests'));
+      const [u, t, r] = await Promise.all(calls);
+      setUsers(u.data);
+      setTeams(t.data);
+      if (r) setRequests(r.data);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -235,6 +303,32 @@ export default function UserManagement() {
     try { await api.delete(`/users/${id}`); await load(); } finally { setRemoving(null); }
   };
 
+  const approve = async (id) => {
+    setApproving(id);
+    try {
+      const { data } = await api.post(`/invite-requests/${id}/approve`);
+      setApprovedUrl(data.inviteUrl);
+      await load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to approve request');
+    } finally {
+      setApproving(null);
+    }
+  };
+
+  const reject = async (id) => {
+    if (!window.confirm('Reject this access request?')) return;
+    setRejecting(id);
+    try { await api.delete(`/invite-requests/${id}`); await load(); } finally { setRejecting(null); }
+  };
+
+  const copyUrl = () => {
+    if (!approvedUrl) return;
+    navigator.clipboard.writeText(approvedUrl);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -242,13 +336,96 @@ export default function UserManagement() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">User Management</h1>
           <p className="text-gray-400 text-sm mt-1">{users.length} member{users.length !== 1 ? 's' : ''} in your organization</p>
         </div>
-        {['super_admin', 'admin'].includes(me?.role) && (
+        {isAdmin && (
           <button onClick={() => setShowInvite(true)}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25">
             <UserPlus className="w-4 h-4" /> Invite Member
           </button>
         )}
       </div>
+
+      {/* ── Approved invite URL modal ─────────────────────────── */}
+      <AnimatePresence>
+        {approvedUrl && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-md bg-white dark:bg-[#12122a] border border-gray-100 dark:border-white/10 rounded-2xl shadow-2xl p-6 space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900 dark:text-white">Request approved!</p>
+                  <p className="text-xs text-gray-500">Share this invite link with the user.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 truncate">{approvedUrl}</code>
+                <button onClick={copyUrl} className="flex-shrink-0 w-9 h-9 flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition">
+                  {copiedUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <button onClick={() => setApprovedUrl(null)} className="w-full py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 transition">
+                Done
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Pending access requests ───────────────────────────── */}
+      {isAdmin && requests.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-500/[0.08] border border-amber-100 dark:border-amber-500/20 rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-amber-100 dark:border-amber-500/20">
+            <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {requests.length} pending access request{requests.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="divide-y divide-amber-100 dark:divide-amber-500/10">
+            {requests.map((r) => (
+              <div key={r._id} className="flex items-start gap-3 px-5 py-4">
+                <div className="w-8 h-8 rounded-full bg-amber-200 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0 text-amber-700 dark:text-amber-300 text-xs font-bold">
+                  {r.name[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{r.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{r.email}</p>
+                  {r.message && (
+                    <div className="flex items-start gap-1.5 mt-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 italic leading-relaxed">{r.message}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => approve(r._id)}
+                    disabled={approving === r._id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/15 hover:bg-emerald-200 dark:hover:bg-emerald-500/25 rounded-lg transition disabled:opacity-60"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    {approving === r._id ? 'Approving…' : 'Approve'}
+                  </button>
+                  <button
+                    onClick={() => reject(r._id)}
+                    disabled={rejecting === r._id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 rounded-lg transition disabled:opacity-60"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-white/[0.05] dark:backdrop-blur-xl border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm dark:shadow-none">
         {loading ? (
@@ -318,7 +495,7 @@ export default function UserManagement() {
 
       <AnimatePresence>
         {showInvite && (
-          <InviteModal teams={teams} onClose={() => setShowInvite(false)} onInvited={() => { load(); }} />
+          <InviteModal teams={teams} meRole={me?.role} onClose={() => setShowInvite(false)} onInvited={load} />
         )}
       </AnimatePresence>
     </motion.div>

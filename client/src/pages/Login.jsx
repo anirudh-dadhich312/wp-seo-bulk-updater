@@ -340,6 +340,13 @@ export default function Login() {
                 Create one
               </Link>
             </motion.p>
+
+            <motion.p variants={fadeUp} className="text-center text-xs text-gray-400">
+              Been invited to a workspace?{' '}
+              <Link to="/request-access" className="font-semibold text-gray-500 hover:text-indigo-600 transition-colors">
+                Request access
+              </Link>
+            </motion.p>
           </motion.div>
         </motion.div>
       </div>

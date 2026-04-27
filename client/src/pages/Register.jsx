@@ -7,7 +7,7 @@ import {
   useTransform,
   AnimatePresence,
 } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, Zap, ArrowRight, User, AlertCircle, CheckCircle } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Zap, ArrowRight, User, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Scene3D = lazy(() => import('../components/auth/Scene3D'));
@@ -205,8 +205,18 @@ export default function Register() {
 
           <motion.div variants={stagger} initial="hidden" animate="visible" className="relative z-10 space-y-5">
             <motion.div variants={fadeUp}>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Create account ✨</h1>
-              <p className="text-sm text-gray-500 mt-1">Get started for free today</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Create account</h1>
+              <p className="text-sm text-gray-500 mt-1">This will create a new independent workspace.</p>
+            </motion.div>
+
+            <motion.div variants={fadeUp}>
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-snug">
+                  Been invited to an existing workspace?{' '}
+                  <span className="font-semibold">Use your invite link</span> instead of registering here.
+                </p>
+              </div>
             </motion.div>
 
             <AnimatePresence mode="wait">

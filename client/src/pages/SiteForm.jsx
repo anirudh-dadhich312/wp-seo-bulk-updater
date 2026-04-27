@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Globe, User, Lock, FileText, ArrowLeft, Save, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import {
+  Globe, User, Lock, FileText, ArrowLeft, Save, AlertCircle, CheckCircle,
+  Info, Download, Puzzle, ArrowRight, ExternalLink,
+} from 'lucide-react';
 import api from '../api/axios';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
@@ -44,9 +47,144 @@ function FloatingInput({ label, icon: Icon, type = 'text', value, onChange, requ
   );
 }
 
+function PluginStep({ onConfirm }) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch('/api/plugin/download');
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'seo-bulk-updater-bridge.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Download failed. Please contact support.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="visible" className="max-w-xl space-y-6">
+      <motion.div variants={fadeUp}>
+        <Link to="/app/sites" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back to sites
+        </Link>
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Add Client Site</h1>
+        <p className="text-gray-400 text-sm mt-1">Before connecting, install the bridge plugin on your WordPress site.</p>
+      </motion.div>
+
+      <motion.div variants={fadeUp} className="bg-white border border-gray-100 shadow-sm rounded-2xl p-6 sm:p-8 dark:bg-white/[0.05] dark:backdrop-blur-2xl dark:border-white/10">
+        {/* Step indicator */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">1</div>
+            <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Install Plugin</span>
+          </div>
+          <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 text-xs flex items-center justify-center font-bold">2</div>
+            <span className="text-sm text-gray-400">Site Details</span>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4 p-4 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl mb-6">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
+            <Puzzle className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">SEO Bulk Updater Bridge</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              This WordPress plugin allows our platform to securely read and update SEO metadata on your site.
+              It works with Yoast SEO, Rank Math, and AIOSEO.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Installation steps:</p>
+          {[
+            'Download the plugin zip file using the button below',
+            'In your WordPress admin, go to Plugins → Add New → Upload Plugin',
+            'Upload the zip file and click "Install Now"',
+            'Activate the plugin — it requires no configuration',
+          ].map((step, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <div className="w-5 h-5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 text-xs flex items-center justify-center font-bold flex-shrink-0 mt-0.5">
+                {i + 1}
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{step}</p>
+            </div>
+          ))}
+        </div>
+
+        <motion.button
+          type="button"
+          onClick={handleDownload}
+          disabled={downloading}
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.975 }}
+          className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold py-3 rounded-xl mb-6 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25 transition-shadow text-sm"
+        >
+          {downloading ? (
+            <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Preparing download…</>
+          ) : (
+            <><Download className="w-4 h-4" /> Download Plugin (.zip)</>
+          )}
+        </motion.button>
+
+        <label className="flex items-start gap-3 cursor-pointer group mb-6">
+          <div className="relative mt-0.5">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="sr-only"
+            />
+            <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 flex items-center justify-center ${
+              confirmed
+                ? 'bg-indigo-600 border-indigo-600'
+                : 'border-gray-300 dark:border-white/20 group-hover:border-indigo-400'
+            }`}>
+              {confirmed && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+            </div>
+          </div>
+          <span className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+            I have downloaded, installed, and activated the <span className="font-semibold text-gray-900 dark:text-white">SEO Bulk Updater Bridge</span> plugin on my WordPress site.
+          </span>
+        </label>
+
+        <motion.button
+          type="button"
+          onClick={onConfirm}
+          disabled={!confirmed}
+          whileHover={confirmed ? { scale: 1.015 } : {}}
+          whileTap={confirmed ? { scale: 0.975 } : {}}
+          className="w-full flex items-center justify-center gap-2 bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-semibold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm"
+        >
+          Continue to Site Details <ArrowRight className="w-4 h-4" />
+        </motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function SiteForm() {
   const { id } = useParams();
   const nav    = useNavigate();
+
+  // Plugin gate: only show on "add" (no id), skip on edit
+  const [step, setStep] = useState(id ? 'form' : 'plugin');
+
   const [form, setForm]       = useState({ name: '', siteUrl: '', username: '', appPassword: '', notes: '' });
   const [err, setErr]         = useState('');
   const [success, setSuccess] = useState(false);
@@ -72,6 +210,8 @@ export default function SiteForm() {
     }
   };
 
+  if (step === 'plugin') return <PluginStep onConfirm={() => setStep('form')} />;
+
   return (
     <motion.div variants={stagger} initial="hidden" animate="visible" className="max-w-xl space-y-6">
       <motion.div variants={fadeUp}>
@@ -88,6 +228,23 @@ export default function SiteForm() {
           {id ? 'Update the site connection details below.' : 'Connect a WordPress site to start bulk updating SEO.'}
         </p>
       </motion.div>
+
+      {/* Step indicator — only shown when adding */}
+      {!id && (
+        <motion.div variants={fadeUp} className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center font-bold">
+              <CheckCircle className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Plugin Installed</span>
+          </div>
+          <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">2</div>
+            <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">Site Details</span>
+          </div>
+        </motion.div>
+      )}
 
       <motion.div variants={fadeUp} className="bg-white border border-gray-100 shadow-sm rounded-2xl p-6 sm:p-8 dark:bg-white/[0.05] dark:backdrop-blur-2xl dark:border-white/10 dark:shadow-none">
         <AnimatePresence mode="wait">
@@ -128,7 +285,12 @@ export default function SiteForm() {
                 <><Save className="w-4 h-4" /> Save Site</>
               )}
             </motion.button>
-            <p className="text-xs text-gray-400">Plugin auto-detected on save.</p>
+            {!id && (
+              <button type="button" onClick={() => setStep('plugin')}
+                className="text-xs text-gray-400 hover:text-indigo-500 transition-colors">
+                ← Back to plugin step
+              </button>
+            )}
           </div>
         </form>
       </motion.div>

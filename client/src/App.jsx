@@ -7,6 +7,7 @@ import Register from './pages/Register.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import AcceptInvite from './pages/AcceptInvite.jsx';
+import RequestAccess from './pages/RequestAccess.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Sites from './pages/Sites.jsx';
 import SiteForm from './pages/SiteForm.jsx';
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/forgot-password"       element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/accept-invite/:token"  element={<AcceptInvite />} />
+      <Route path="/request-access"        element={<RequestAccess />} />
       <Route
         path="/app"
         element={<PrivateRoute><Layout /></PrivateRoute>}

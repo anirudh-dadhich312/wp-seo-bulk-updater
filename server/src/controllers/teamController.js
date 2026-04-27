@@ -42,7 +42,14 @@ export const createTeam = async (req, res, next) => {
     });
 
     if (leaderId) {
-      await User.findByIdAndUpdate(leaderId, { role: 'team_leader', team: team._id });
+      const LEVELS = { super_admin: 4, admin: 3, team_leader: 2, team_member: 1, operator: 1 };
+      const leaderUser = await User.findById(leaderId).lean();
+      const currentLevel = LEVELS[leaderUser?.role] ?? 0;
+      // Only promote to team_leader — never demote an admin or super_admin
+      const update = currentLevel < LEVELS.team_leader
+        ? { role: 'team_leader', team: team._id }
+        : { team: team._id };
+      await User.findByIdAndUpdate(leaderId, update);
     }
 
     res.status(201).json(team);

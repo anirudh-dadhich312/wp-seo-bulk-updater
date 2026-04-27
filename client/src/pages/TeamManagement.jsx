@@ -112,22 +112,29 @@ function CreateTeamModal({ users, onClose, onCreate }) {
 
 /* ─── Invite modal ──────────────────────────────────────────── */
 function InviteModal({ meRole, onClose, onInvited }) {
-  const [form,    setForm]    = useState({ email: '', name: '', role: 'team_member' });
+  const [form,    setForm]    = useState({ email: '', name: '', role: roleOptions.length === 1 ? roleOptions[0].value : '' });
   const [loading, setLoading] = useState(false);
   const [err,     setErr]     = useState('');
   const [result,  setResult]  = useState(null);
   const [copied,  setCopied]  = useState(false);
 
-  const roleOptions = (meRole === 'super_admin' || meRole === 'admin')
+  const roleOptions = meRole === 'super_admin'
     ? [
         { value: 'team_member', label: 'Team Member' },
         { value: 'team_leader', label: 'Team Leader' },
         { value: 'admin',       label: 'Admin' },
       ]
+    : meRole === 'admin'
+    ? [
+        { value: 'team_member', label: 'Team Member' },
+        { value: 'team_leader', label: 'Team Leader' },
+      ]
     : [{ value: 'team_member', label: 'Team Member' }];
 
   const submit = async (e) => {
-    e.preventDefault(); setErr(''); setLoading(true);
+    e.preventDefault();
+    if (!form.role) { setErr('Please select a role before sending the invite.'); return; }
+    setErr(''); setLoading(true);
     try {
       const { data } = await api.post('/users/invite', form);
       setResult(data.inviteUrl); onInvited();

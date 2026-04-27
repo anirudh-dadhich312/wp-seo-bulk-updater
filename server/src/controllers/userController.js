@@ -101,6 +101,10 @@ export const updateUser = async (req, res, next) => {
     if (target.role === 'super_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Cannot modify a super admin' });
     }
+    // Admins can only assign roles below admin level
+    if (role && req.user.role === 'admin' && ['admin', 'super_admin'].includes(role)) {
+      return res.status(403).json({ error: 'Only super admins can assign the admin role' });
+    }
 
     if (name  !== undefined) target.name = name;
     if (role)                target.role = role;

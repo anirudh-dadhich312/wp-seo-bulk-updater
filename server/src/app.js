@@ -6,12 +6,14 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 
 import { env } from './config/env.js';
-import authRoutes  from './routes/auth.js';
-import siteRoutes  from './routes/sites.js';
-import jobRoutes   from './routes/jobs.js';
-import auditRoutes from './routes/audit.js';
-import userRoutes  from './routes/users.js';
-import teamRoutes  from './routes/teams.js';
+import authRoutes          from './routes/auth.js';
+import siteRoutes          from './routes/sites.js';
+import jobRoutes           from './routes/jobs.js';
+import auditRoutes         from './routes/audit.js';
+import userRoutes          from './routes/users.js';
+import teamRoutes          from './routes/teams.js';
+import pluginRoutes        from './routes/plugin.js';
+import inviteRequestRoutes from './routes/inviteRequests.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -44,12 +46,14 @@ app.use('/api', rateLimit({
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date() }));
 
-app.use('/api/auth',  authRoutes);
-app.use('/api/sites', siteRoutes);
-app.use('/api/jobs',  jobRoutes);
-app.use('/api/audit', auditRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/teams', teamRoutes);
+app.use('/api/auth',            authRoutes);
+app.use('/api/sites',           siteRoutes);
+app.use('/api/jobs',            jobRoutes);
+app.use('/api/audit',           auditRoutes);
+app.use('/api/users',           userRoutes);
+app.use('/api/teams',           teamRoutes);
+app.use('/api/plugin',          pluginRoutes);
+app.use('/api/invite-requests', inviteRequestRoutes);
 
 app.use(errorHandler);
 
