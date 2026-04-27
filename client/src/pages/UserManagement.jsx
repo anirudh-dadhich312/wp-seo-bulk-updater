@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, UserPlus, Pencil, Trash2, Copy, Check, X, ChevronDown, AlertCircle, Shield, Crown, UserCheck, User } from 'lucide-react';
+import { Users, UserPlus, Trash2, Copy, Check, X, ChevronDown, AlertCircle, Shield, Crown, UserCheck, User } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -24,6 +24,79 @@ function RoleBadge({ role }) {
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${cfg.color}`}>
       <Icon className="w-3 h-3" />{cfg.label}
     </span>
+  );
+}
+
+const EDITABLE_ROLES = [
+  { value: 'super_admin',  label: 'Super Admin' },
+  { value: 'admin',        label: 'Admin' },
+  { value: 'team_leader',  label: 'Team Leader' },
+  { value: 'team_member',  label: 'Team Member' },
+];
+
+function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
+  const [open,    setOpen]    = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const ref = useRef(null);
+
+  const canEdit = meRole === 'super_admin'
+    || (meRole === 'admin' && !['super_admin'].includes(currentRole) && String(userId) !== String(meId));
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const choose = async (role) => {
+    if (role === currentRole) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await api.put(`/users/${userId}`, { role });
+      onUpdated();
+    } finally {
+      setSaving(false);
+      setOpen(false);
+    }
+  };
+
+  if (!canEdit) return <RoleBadge role={currentRole} />;
+
+  const cfg = ROLE_CFG[currentRole] || ROLE_CFG.team_member;
+  const Icon = cfg.icon;
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={saving}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border transition hover:opacity-80 ${cfg.color}`}
+      >
+        <Icon className="w-3 h-3" />
+        {cfg.label}
+        <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-36 bg-white dark:bg-[#1a1a35] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-hidden">
+          {EDITABLE_ROLES.filter((r) => meRole === 'super_admin' || r.value !== 'super_admin').map((r) => {
+            const rc = ROLE_CFG[r.value];
+            const RIcon = rc.icon;
+            return (
+              <button
+                key={r.value}
+                onClick={() => choose(r.value)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.06] ${r.value === currentRole ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-500/10' : 'text-gray-700 dark:text-gray-300'}`}
+              >
+                <RIcon className="w-3 h-3" />{r.label}
+                {r.value === currentRole && <Check className="w-3 h-3 ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -198,7 +271,15 @@ export default function UserManagement() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3"><RoleBadge role={u.role} /></td>
+                  <td className="px-4 py-3">
+                    <RoleEditor
+                      userId={u._id}
+                      currentRole={u.role}
+                      meRole={me?.role}
+                      meId={me?._id}
+                      onUpdated={load}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{u.team?.name || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[u.status] || ''}`}>
