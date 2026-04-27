@@ -81,7 +81,7 @@ function SiteCard({ site, busy, onRedetect, onDelete }) {
             <RefreshCw className={`w-3.5 h-3.5 ${busy === site._id ? 'animate-spin' : ''}`} />
             {busy === site._id ? 'Detecting…' : 'Redetect'}
           </button>
-          <Link to={`/sites/${site._id}/edit`}
+          <Link to={`/app/sites/${site._id}/edit`}
             className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:text-indigo-300 dark:hover:bg-indigo-500/10 rounded-lg transition-colors">
             <Pencil className="w-3.5 h-3.5" />
           </Link>
@@ -120,7 +120,7 @@ export default function Sites() {
           <p className="text-gray-400 text-sm mt-1">{sites.length} site{sites.length !== 1 ? 's' : ''} connected</p>
         </div>
         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Link to="/sites/new" className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-shadow">
+          <Link to="/app/sites/new" className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-shadow">
             <Plus className="w-4 h-4" /> Add Site
           </Link>
         </motion.div>
@@ -152,7 +152,7 @@ export default function Sites() {
             </div>
             <p className="font-bold text-gray-900 dark:text-white text-lg">No sites yet</p>
             <p className="text-sm text-gray-400 max-w-xs">Add your first WordPress site to start bulk updating SEO metadata.</p>
-            <Link to="/sites/new" className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
+            <Link to="/app/sites/new" className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
               Add your first site <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>

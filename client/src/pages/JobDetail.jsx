@@ -188,7 +188,7 @@ export default function JobDetail() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6 max-w-6xl">
       <motion.div variants={fadeUp}>
-        <Link to="/bulk-update" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors">
+        <Link to="/app/bulk-update" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors">
           <ArrowLeft className="w-4 h-4" /> New Bulk Update
         </Link>
       </motion.div>

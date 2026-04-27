@@ -39,7 +39,7 @@ export default function BulkUpdate() {
       const fd = new FormData();
       fd.append('siteId', siteId); fd.append('file', file);
       const { data } = await api.post('/jobs/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      nav(`/jobs/${data._id}`);
+      nav(`/app/jobs/${data._id}`);
     } catch (e) {
       setErr(e.response?.data?.error || 'Upload failed. Please try again.');
     } finally { setLoading(false); }

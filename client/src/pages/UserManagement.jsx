@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, UserPlus, Trash2, Copy, Check, X, ChevronDown, AlertCircle, Shield, Crown, UserCheck, User } from 'lucide-react';
 import api from '../api/axios';
@@ -35,18 +36,27 @@ const EDITABLE_ROLES = [
 ];
 
 function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
-  const [open,    setOpen]    = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const ref = useRef(null);
+  const [open,   setOpen]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pos,    setPos]    = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
 
   const canEdit = meRole === 'super_admin'
     || (meRole === 'admin' && !['super_admin'].includes(currentRole) && String(userId) !== String(meId));
 
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(true);
+  };
+
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const close = (e) => { if (btnRef.current && !btnRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
   const choose = async (role) => {
@@ -67,9 +77,10 @@ function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
   const Icon = cfg.icon;
 
   return (
-    <div className="relative inline-block" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         disabled={saving}
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border transition hover:opacity-80 ${cfg.color}`}
       >
@@ -78,8 +89,11 @@ function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
         <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-36 bg-white dark:bg-[#1a1a35] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-hidden">
+      {open && createPortal(
+        <div
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="w-36 bg-white dark:bg-[#1a1a35] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden"
+        >
           {EDITABLE_ROLES.filter((r) => meRole === 'super_admin' || r.value !== 'super_admin').map((r) => {
             const rc = ROLE_CFG[r.value];
             const RIcon = rc.icon;
@@ -94,9 +108,10 @@ function RoleEditor({ userId, currentRole, meRole, meId, onUpdated }) {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 

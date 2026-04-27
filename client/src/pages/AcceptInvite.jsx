@@ -33,7 +33,7 @@ export default function AcceptInvite() {
     try {
       const { data } = await api.post(`/auth/accept-invite/${token}`, { name, password });
       localStorage.setItem('token', data.token);
-      window.location.href = '/';
+      window.location.href = '/app';
     } catch (e) {
       setErr(e.response?.data?.error || 'Something went wrong.');
     } finally {

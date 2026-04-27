@@ -15,12 +15,12 @@ const ROLE_LEVELS = { super_admin: 4, admin: 3, team_leader: 2, team_member: 1, 
 const hasRole = (user, min) => (ROLE_LEVELS[user?.role] ?? 0) >= (ROLE_LEVELS[min] ?? 0);
 
 const BASE_NAV = [
-  { to: '/',            end: true,  icon: LayoutDashboard, label: 'Dashboard',   minRole: null },
-  { to: '/sites',                   icon: Globe,            label: 'Client Sites', minRole: null },
-  { to: '/bulk-update',             icon: UploadCloud,      label: 'Bulk Update',  minRole: null },
-  { to: '/audit',                   icon: ClipboardList,    label: 'Audit Log',    minRole: null },
-  { to: '/teams',                   icon: UsersRound,       label: 'Teams',        minRole: 'team_leader' },
-  { to: '/users',                   icon: Users,            label: 'Users',        minRole: 'admin' },
+  { to: '/app',              end: true,  icon: LayoutDashboard, label: 'Dashboard',    minRole: null },
+  { to: '/app/sites',                    icon: Globe,            label: 'Client Sites', minRole: null },
+  { to: '/app/bulk-update',              icon: UploadCloud,      label: 'Bulk Update',  minRole: null },
+  { to: '/app/audit',                    icon: ClipboardList,    label: 'Audit Log',    minRole: null },
+  { to: '/app/teams',                    icon: UsersRound,       label: 'Teams',        minRole: 'team_leader' },
+  { to: '/app/users',                    icon: Users,            label: 'Users',        minRole: 'admin' },
 ];
 
 function Sidebar({ onClose }) {
@@ -28,7 +28,7 @@ function Sidebar({ onClose }) {
   const { isDark, toggle } = useTheme();
   const nav = useNavigate();
 
-  const handleLogout = () => { logout(); nav('/login'); };
+  const handleLogout = () => { logout(); nav('/'); };
 
   return (
     <div className="flex flex-col h-full w-64 bg-white border-r border-gray-100 dark:bg-white/[0.03] dark:backdrop-blur-2xl dark:border-white/[0.07]">

@@ -165,7 +165,7 @@ export default function Dashboard() {
           </p>
         </div>
         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Link to="/bulk-update" className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-shadow">
+          <Link to="/app/bulk-update" className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-shadow">
             <Plus className="w-4 h-4" /> New Bulk Update
           </Link>
         </motion.div>
@@ -257,7 +257,7 @@ export default function Dashboard() {
               <Zap className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent Jobs</h2>
             </div>
-            <Link to="/bulk-update" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium flex items-center gap-1 transition-colors">
+            <Link to="/app/bulk-update" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium flex items-center gap-1 transition-colors">
               New job <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -281,7 +281,7 @@ export default function Dashboard() {
               </div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">No jobs yet</p>
               <p className="text-sm text-gray-400 max-w-xs">Start your first bulk update to see job history here.</p>
-              <Link to="/bulk-update" className="mt-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold flex items-center gap-1">
+              <Link to="/app/bulk-update" className="mt-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold flex items-center gap-1">
                 Create a job <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -289,7 +289,7 @@ export default function Dashboard() {
             <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
               {stats.recent.map((job, i) => (
                 <motion.div key={job._id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
-                  <Link to={`/jobs/${job._id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors group">
+                  <Link to={`/app/jobs/${job._id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors group">
                     <div className="w-9 h-9 bg-indigo-50 border border-indigo-100 dark:bg-indigo-500/20 dark:border-indigo-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                       <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     </div>

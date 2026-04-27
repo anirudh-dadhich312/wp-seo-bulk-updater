@@ -116,7 +116,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      nav('/');
+      nav('/app');
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
       setShakeKey((k) => k + 1);

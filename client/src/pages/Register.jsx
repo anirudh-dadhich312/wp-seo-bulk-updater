@@ -117,7 +117,7 @@ export default function Register() {
     setLoading(true);
     try {
       await register(form.email, form.password, form.name);
-      nav('/');
+      nav('/app');
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');
       setShakeKey((k) => k + 1);

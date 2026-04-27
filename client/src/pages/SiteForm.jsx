@@ -64,7 +64,7 @@ export default function SiteForm() {
       if (id) await api.put(`/sites/${id}`, form);
       else    await api.post('/sites', form);
       setSuccess(true);
-      setTimeout(() => nav('/sites'), 900);
+      setTimeout(() => nav('/app/sites'), 900);
     } catch (e) {
       setErr(e.response?.data?.error || 'Failed to save site');
     } finally {
@@ -75,7 +75,7 @@ export default function SiteForm() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="visible" className="max-w-xl space-y-6">
       <motion.div variants={fadeUp}>
-        <Link to="/sites" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors">
+        <Link to="/app/sites" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to sites
         </Link>
       </motion.div>

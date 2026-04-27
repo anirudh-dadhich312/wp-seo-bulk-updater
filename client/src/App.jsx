@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Layout from './components/Layout.jsx';
+import Landing from './pages/Landing.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
@@ -22,7 +23,7 @@ const PrivateRoute = ({ children, minRole }) => {
   if (loading) return <div className="p-8 text-gray-500">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (minRole && (ROLE_LEVELS[user.role] ?? 0) < (ROLE_LEVELS[minRole] ?? 0)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
   return children;
 };
@@ -30,13 +31,14 @@ const PrivateRoute = ({ children, minRole }) => {
 export default function App() {
   return (
     <Routes>
+      <Route path="/"                      element={<Landing />} />
       <Route path="/login"                 element={<Login />} />
       <Route path="/register"              element={<Register />} />
       <Route path="/forgot-password"       element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/accept-invite/:token"  element={<AcceptInvite />} />
       <Route
-        path="/"
+        path="/app"
         element={<PrivateRoute><Layout /></PrivateRoute>}
       >
         <Route index                 element={<Dashboard />} />
