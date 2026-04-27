@@ -1,13 +1,71 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Trash2, X, AlertCircle, UserCheck } from 'lucide-react';
+import { Users, Plus, Trash2, X, AlertCircle, UserCheck, UserPlus, ChevronDown, Copy, Check } from 'lucide-react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
+/* ─── Custom select (avoids browser native white dropdown) ─── */
+function CustomSelect({ value, onChange, options, placeholder = 'Select…' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3.5 py-2.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+      >
+        <span className={selected ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>
+          {selected?.label || placeholder}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-full z-50 bg-white dark:bg-[#1c1c3a] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3.5 py-2.5 text-sm transition-colors flex items-center justify-between
+                ${opt.value === value
+                  ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06]'}`}
+            >
+              {opt.label}
+              {opt.value === value && <Check className="w-3.5 h-3.5" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Create Team modal ─────────────────────────────────────── */
 function CreateTeamModal({ users, onClose, onCreate }) {
   const [name,     setName]     = useState('');
   const [leaderId, setLeaderId] = useState('');
   const [loading,  setLoading]  = useState(false);
   const [err,      setErr]      = useState('');
+
+  const leaderOptions = [
+    { value: '', label: '— assign later —' },
+    ...users
+      .filter((u) => ['admin', 'team_leader', 'team_member'].includes(u.role))
+      .map((u) => ({ value: u._id, label: u.name || u.email })),
+  ];
 
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true);
@@ -37,13 +95,7 @@ function CreateTeamModal({ users, onClose, onCreate }) {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Team leader</label>
-            <select value={leaderId} onChange={(e) => setLeaderId(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors">
-              <option value="">— assign later —</option>
-              {users.filter((u) => ['admin', 'team_leader', 'team_member'].includes(u.role)).map((u) => (
-                <option key={u._id} value={u._id}>{u.name || u.email}</option>
-              ))}
-            </select>
+            <CustomSelect value={leaderId} onChange={setLeaderId} options={leaderOptions} />
           </div>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition">Cancel</button>
@@ -57,12 +109,107 @@ function CreateTeamModal({ users, onClose, onCreate }) {
   );
 }
 
+/* ─── Invite modal ──────────────────────────────────────────── */
+function InviteModal({ meRole, onClose, onInvited }) {
+  const [form,    setForm]    = useState({ email: '', name: '', role: 'team_member' });
+  const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState('');
+  const [result,  setResult]  = useState(null);
+  const [copied,  setCopied]  = useState(false);
+
+  const roleOptions = meRole === 'super_admin' || meRole === 'admin'
+    ? [
+        { value: 'team_member', label: 'Team Member' },
+        { value: 'team_leader', label: 'Team Leader' },
+        { value: 'admin',       label: 'Admin' },
+      ]
+    : [{ value: 'team_member', label: 'Team Member' }];
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setLoading(true);
+    try {
+      const { data } = await api.post('/users/invite', form);
+      setResult(data.inviteUrl);
+      onInvited();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Failed to invite user');
+    } finally { setLoading(false); }
+  };
+
+  const copy = () => {
+    navigator.clipboard.writeText(result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm">
+      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-white dark:bg-[#12122a] border border-gray-100 dark:border-white/10 rounded-2xl shadow-2xl p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Invite Team Member</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
+        </div>
+
+        {result ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
+              <Check className="w-4 h-4 flex-shrink-0" /> Invite created! Share this link:
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 truncate">{result}</code>
+              <button onClick={copy}
+                className="flex-shrink-0 w-9 h-9 flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition">
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <button onClick={onClose} className="w-full py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition">Done</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-4">
+            {err && <p className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400"><AlertCircle className="w-4 h-4" />{err}</p>}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Email *</label>
+              <input type="email" required value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 transition-colors" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Name</label>
+              <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 transition-colors" />
+            </div>
+            {roleOptions.length > 1 && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Role *</label>
+                <CustomSelect
+                  value={form.role}
+                  onChange={(v) => setForm((f) => ({ ...f, role: v }))}
+                  options={roleOptions}
+                />
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-white/[0.06] rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition">Cancel</button>
+              <button type="submit" disabled={loading} className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl shadow-md shadow-indigo-500/20 disabled:opacity-60">
+                {loading ? 'Inviting…' : 'Send Invite'}
+              </button>
+            </div>
+          </form>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+/* ─── Page ──────────────────────────────────────────────────── */
 export default function TeamManagement() {
-  const [teams,     setTeams]     = useState([]);
-  const [users,     setUsers]     = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [removing,  setRemoving]  = useState(null);
+  const { user: me } = useAuth();
+  const [teams,       setTeams]       = useState([]);
+  const [users,       setUsers]       = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [showModal,   setShowModal]   = useState(false);
+  const [showInvite,  setShowInvite]  = useState(false);
+  const [removing,    setRemoving]    = useState(null);
 
   const load = () =>
     Promise.all([api.get('/teams'), api.get('/users')])
@@ -77,6 +224,9 @@ export default function TeamManagement() {
     try { await api.delete(`/teams/${id}`); await load(); } finally { setRemoving(null); }
   };
 
+  const canInvite  = ['super_admin', 'admin', 'team_leader'].includes(me?.role);
+  const canCreate  = ['super_admin', 'admin'].includes(me?.role);
+
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -84,10 +234,20 @@ export default function TeamManagement() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Teams</h1>
           <p className="text-gray-400 text-sm mt-1">{teams.length} team{teams.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25">
-          <Plus className="w-4 h-4" /> New Team
-        </button>
+        <div className="flex items-center gap-2">
+          {canInvite && (
+            <button onClick={() => setShowInvite(true)}
+              className="inline-flex items-center gap-2 border border-indigo-500/40 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+              <UserPlus className="w-4 h-4" /> Invite Member
+            </button>
+          )}
+          {canCreate && (
+            <button onClick={() => setShowModal(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25">
+              <Plus className="w-4 h-4" /> New Team
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -121,10 +281,12 @@ export default function TeamManagement() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => deleteTeam(team._id)} disabled={removing === team._id}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition flex-shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {canCreate && (
+                  <button onClick={() => deleteTeam(team._id)} disabled={removing === team._id}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition flex-shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="border-t border-gray-100 dark:border-white/[0.06] pt-3">
@@ -156,6 +318,9 @@ export default function TeamManagement() {
       <AnimatePresence>
         {showModal && (
           <CreateTeamModal users={users} onClose={() => setShowModal(false)} onCreate={load} />
+        )}
+        {showInvite && (
+          <InviteModal meRole={me?.role} onClose={() => setShowInvite(false)} onInvited={load} />
         )}
       </AnimatePresence>
     </motion.div>

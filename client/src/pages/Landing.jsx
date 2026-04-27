@@ -255,44 +255,71 @@ function Hero({ user }) {
 
         {/* Preview card */}
         <Reveal className="mt-20 max-w-4xl mx-auto">
-          <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm overflow-hidden shadow-2xl shadow-black/50">
+          <div className="relative rounded-2xl border border-indigo-500/20 bg-[#0d0d28] overflow-hidden shadow-2xl shadow-indigo-900/40">
+            {/* Glow behind card */}
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 via-transparent to-violet-900/10 pointer-events-none" />
+
             {/* Window bar */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06] bg-white/[0.02]">
+            <div className="relative flex items-center gap-2 px-4 py-3 border-b border-white/[0.08] bg-white/[0.03]">
               <div className="flex gap-1.5">
                 {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
                   <div key={c} className="w-3 h-3 rounded-full" style={{ background: c }} />
                 ))}
               </div>
               <div className="flex-1 mx-4">
-                <div className="bg-white/[0.06] rounded-md text-[10px] text-gray-500 px-3 py-1 w-48 mx-auto text-center">wp-seo-bulk-updater.vercel.app</div>
+                <div className="bg-white/[0.08] rounded-md text-[10px] text-gray-400 px-3 py-1 w-52 mx-auto text-center border border-white/[0.06]">wp-seo-bulk-updater.vercel.app</div>
               </div>
             </div>
+
             {/* Mock UI */}
-            <div className="p-4 sm:p-6 space-y-3">
+            <div className="relative p-4 sm:p-6 space-y-4">
+              {/* Header row */}
               <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <div className="h-4 w-40 bg-white/10 rounded-md" />
-                  <div className="h-2.5 w-24 bg-white/5 rounded-md" />
+                <div className="space-y-2">
+                  <div className="h-4 w-44 bg-white/25 rounded-md" />
+                  <div className="h-2.5 w-28 bg-white/12 rounded-md" />
                 </div>
-                <div className="h-8 w-24 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl opacity-80" />
+                <div className="h-9 w-28 bg-gradient-to-r from-indigo-500 to-violet-600 rounded-xl shadow-lg shadow-indigo-500/30 flex items-center justify-center">
+                  <div className="h-2 w-14 bg-white/60 rounded-full" />
+                </div>
               </div>
+
+              {/* Stat cards */}
               <div className="grid grid-cols-3 gap-3">
-                {['bg-indigo-500/20', 'bg-violet-500/20', 'bg-emerald-500/20'].map((c, i) => (
-                  <div key={i} className={`${c} rounded-xl p-3 border border-white/[0.06] space-y-2`}>
-                    <div className="h-3 w-16 bg-white/10 rounded" />
-                    <div className="h-5 w-10 bg-white/20 rounded font-bold" />
+                {[
+                  { bg: 'bg-indigo-500/25', border: 'border-indigo-500/30', bar: 'bg-indigo-400/60', val: 'bg-indigo-300/70' },
+                  { bg: 'bg-violet-500/25', border: 'border-violet-500/30', bar: 'bg-violet-400/60', val: 'bg-violet-300/70' },
+                  { bg: 'bg-emerald-500/20', border: 'border-emerald-500/25', bar: 'bg-emerald-400/60', val: 'bg-emerald-300/70' },
+                ].map((c, i) => (
+                  <div key={i} className={`${c.bg} rounded-xl p-3 border ${c.border} space-y-2`}>
+                    <div className={`h-2.5 w-14 ${c.bar} rounded`} />
+                    <div className={`h-6 w-12 ${c.val} rounded-md`} />
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl border border-white/[0.06] overflow-hidden">
-                {[85, 62, 100, 45, 91].map((pct, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.04] last:border-0">
-                    <div className="w-5 h-5 rounded-full bg-white/10 flex-shrink-0" />
-                    <div className="flex-1 space-y-1">
-                      <div className="h-2 rounded bg-white/10" style={{ width: `${pct}%` }} />
-                      <div className="h-1.5 rounded bg-white/5" style={{ width: `${pct * 0.6}%` }} />
+
+              {/* Table rows */}
+              <div className="rounded-xl border border-white/[0.10] overflow-hidden bg-white/[0.03]">
+                {/* Table header */}
+                <div className="flex items-center gap-3 px-4 py-2 border-b border-white/[0.08] bg-white/[0.04]">
+                  {['w-20', 'flex-1', 'w-16'].map((w, i) => (
+                    <div key={i} className={`h-2 ${w} bg-white/20 rounded`} />
+                  ))}
+                </div>
+                {[
+                  { w1: '82%', w2: '55%', color: 'bg-emerald-400/70' },
+                  { w1: '60%', w2: '40%', color: 'bg-emerald-400/70' },
+                  { w1: '95%', w2: '70%', color: 'bg-emerald-400/70' },
+                  { w1: '45%', w2: '30%', color: 'bg-amber-400/60' },
+                  { w1: '88%', w2: '60%', color: 'bg-emerald-400/70' },
+                ].map((row, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.05] last:border-0">
+                    <div className="w-5 h-5 rounded-full bg-indigo-500/40 border border-indigo-400/30 flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2 rounded bg-white/20" style={{ width: row.w1 }} />
+                      <div className="h-1.5 rounded bg-white/10" style={{ width: row.w2 }} />
                     </div>
-                    <div className="h-4 w-12 bg-emerald-500/30 rounded-full" />
+                    <div className={`h-5 w-14 ${row.color} rounded-full border border-white/10`} />
                   </div>
                 ))}
               </div>

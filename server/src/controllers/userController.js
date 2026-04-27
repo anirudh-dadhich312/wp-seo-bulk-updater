@@ -5,9 +5,18 @@ import { env } from '../config/env.js';
 
 export const listUsers = async (req, res, next) => {
   try {
-    const filter = req.user.role === 'super_admin'
-      ? {}
-      : { organization: req.user.organization };
+    const role = req.user.role;
+    let filter;
+    if (role === 'super_admin') {
+      filter = {};
+    } else if (role === 'admin') {
+      filter = { organization: req.user.organization };
+    } else {
+      // team_leader: only their own team members (+ themselves)
+      filter = req.user.team
+        ? { $or: [{ team: req.user.team }, { _id: req.user._id }] }
+        : { _id: req.user._id };
+    }
 
     const users = await User.find(filter)
       .select('-password -resetPasswordToken -resetPasswordExpires -inviteToken')
@@ -24,12 +33,27 @@ export const listUsers = async (req, res, next) => {
 
 export const inviteUser = async (req, res, next) => {
   try {
-    const { email, name, role, teamId } = req.body;
+    const { email, name } = req.body;
+    let { role, teamId } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const requesterRole = req.user.role;
+
+    // Team leaders can only invite team_member and must use their own team
+    if (requesterRole === 'team_leader') {
+      role   = 'team_member';
+      teamId = req.user.team ? String(req.user.team) : undefined;
+      if (!teamId) return res.status(400).json({ error: 'You must be assigned to a team before inviting members' });
+    }
 
     const allowedRoles = ['admin', 'team_leader', 'team_member'];
     if (role && !allowedRoles.includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Admins cannot invite super_admin
+    if (requesterRole === 'admin' && role === 'super_admin') {
+      return res.status(403).json({ error: 'Cannot invite a super admin' });
     }
 
     const existing = await User.findOne({ email });
@@ -40,14 +64,14 @@ export const inviteUser = async (req, res, next) => {
 
     const user = await User.create({
       email,
-      name:         name || '',
-      role:         role || 'team_member',
-      organization: req.user.organization,
-      team:         teamId || undefined,
-      status:       'invited',
-      inviteToken:  hashToken,
+      name:          name || '',
+      role:          role || 'team_member',
+      organization:  req.user.organization,
+      team:          teamId || undefined,
+      status:        'invited',
+      inviteToken:   hashToken,
       inviteExpires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      password:     crypto.randomBytes(16).toString('hex'),
+      password:      crypto.randomBytes(16).toString('hex'),
     });
 
     if (teamId) {

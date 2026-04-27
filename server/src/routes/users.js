@@ -6,9 +6,9 @@ import { listUsers, inviteUser, updateUser, removeUser } from '../controllers/us
 const router = Router();
 router.use(requireAuth);
 
-router.get('/',       authorize('admin'), listUsers);
-router.post('/invite', authorize('admin'), inviteUser);
-router.put('/:id',    authorize('admin'), updateUser);
-router.delete('/:id', authorize('admin'), removeUser);
+router.get('/',        authorize('team_leader'), listUsers);
+router.post('/invite', authorize('team_leader'), inviteUser);
+router.put('/:id',     authorize('admin'),       updateUser);
+router.delete('/:id',  authorize('admin'),       removeUser);
 
 export default router;
