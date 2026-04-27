@@ -3,9 +3,16 @@ import User from '../models/User.js';
 
 export const listTeams = async (req, res, next) => {
   try {
-    const filter = req.user.role === 'super_admin'
-      ? {}
-      : { organization: req.user.organization };
+    const role = req.user.role;
+    let filter;
+    if (role === 'super_admin') {
+      filter = {};
+    } else if (role === 'admin') {
+      filter = { organization: req.user.organization };
+    } else {
+      // team_leader / team_member: only their own team
+      filter = req.user.team ? { _id: req.user.team } : { _id: null };
+    }
 
     const teams = await Team.find(filter)
       .populate('leader',  'name email role')
@@ -51,6 +58,23 @@ export const updateTeam = async (req, res, next) => {
     if (!team) return res.status(404).json({ error: 'Team not found' });
 
     const { name, leaderId, addMemberIds, removeMemberIds } = req.body;
+
+    // Team leaders can only remove members from their own team
+    if (req.user.role === 'team_leader') {
+      if (!req.user.team || String(req.user.team) !== String(req.params.id)) {
+        return res.status(403).json({ error: 'You can only manage your own team' });
+      }
+      if (name || leaderId || addMemberIds?.length) {
+        return res.status(403).json({ error: 'Team leaders can only remove members' });
+      }
+      // Team leaders cannot remove the team leader
+      if (removeMemberIds?.length) {
+        const leaderIdStr = String(team.leader);
+        if (removeMemberIds.some((id) => String(id) === leaderIdStr)) {
+          return res.status(403).json({ error: 'Cannot remove the team leader — contact an admin' });
+        }
+      }
+    }
 
     if (name) team.name = name;
 
