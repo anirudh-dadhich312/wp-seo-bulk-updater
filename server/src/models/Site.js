@@ -6,6 +6,7 @@ const siteSchema = new mongoose.Schema(
     siteUrl:              { type: String, required: true, trim: true },
     username:             { type: String, required: true, trim: true },
     appPasswordEncrypted: { type: String, required: true },
+    wpVersion:      { type: String, default: null },
     detectedPlugin: {
       type:    String,
       enum:    ['yoast', 'rankmath', 'aioseo', 'generic', 'unknown'],

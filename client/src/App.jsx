@@ -13,6 +13,8 @@ import Sites from './pages/Sites.jsx';
 import SiteForm from './pages/SiteForm.jsx';
 import BulkUpdate from './pages/BulkUpdate.jsx';
 import JobDetail from './pages/JobDetail.jsx';
+import AltTagUpdate from './pages/AltTagUpdate.jsx';
+import AltTagJobDetail from './pages/AltTagJobDetail.jsx';
 import AuditLogs from './pages/AuditLogs.jsx';
 import UserManagement from './pages/UserManagement.jsx';
 import TeamManagement from './pages/TeamManagement.jsx';
@@ -47,8 +49,10 @@ export default function App() {
         <Route path="sites"          element={<Sites />} />
         <Route path="sites/new"      element={<SiteForm />} />
         <Route path="sites/:id/edit" element={<SiteForm />} />
-        <Route path="bulk-update"    element={<BulkUpdate />} />
-        <Route path="jobs/:id"       element={<JobDetail />} />
+        <Route path="bulk-update"       element={<BulkUpdate />} />
+        <Route path="jobs/:id"          element={<JobDetail />} />
+        <Route path="alt-tags"          element={<AltTagUpdate />} />
+        <Route path="alt-tags/:id"      element={<AltTagJobDetail />} />
         <Route path="audit"          element={<AuditLogs />} />
         <Route path="users"          element={<PrivateRoute minRole="admin"><UserManagement /></PrivateRoute>} />
         <Route path="teams"          element={<PrivateRoute minRole="team_leader"><TeamManagement /></PrivateRoute>} />

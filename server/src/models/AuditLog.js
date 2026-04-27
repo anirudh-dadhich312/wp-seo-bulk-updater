@@ -8,7 +8,7 @@ const auditLogSchema = new mongoose.Schema(
     postType: String,
     postUrl: String,
     plugin: String,
-    field: { type: String, enum: ['title', 'description', 'both'] },
+    field: { type: String, enum: ['title', 'description', 'both', 'alt_text'] },
     oldValue: String,
     newValue: String,
     action: { type: String, enum: ['update', 'rollback'], default: 'update' },

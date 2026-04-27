@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap, LayoutDashboard, Globe, UploadCloud,
   ClipboardList, LogOut, Menu, X, ChevronRight, Sun, Moon,
-  Users, UsersRound,
+  Users, UsersRound, Image,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -18,6 +18,7 @@ const BASE_NAV = [
   { to: '/app',              end: true,  icon: LayoutDashboard, label: 'Dashboard',    minRole: null },
   { to: '/app/sites',                    icon: Globe,            label: 'Client Sites', minRole: null },
   { to: '/app/bulk-update',              icon: UploadCloud,      label: 'Bulk Update',  minRole: null },
+  { to: '/app/alt-tags',                 icon: Image,            label: 'Image Alt Tags', minRole: null },
   { to: '/app/audit',                    icon: ClipboardList,    label: 'Audit Log',    minRole: null },
   { to: '/app/teams',                    icon: UsersRound,       label: 'Teams',        minRole: 'team_leader' },
   { to: '/app/users',                    icon: Users,            label: 'Users',        minRole: 'admin' },

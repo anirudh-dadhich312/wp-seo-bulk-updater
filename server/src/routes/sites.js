@@ -7,11 +7,13 @@ import {
   updateSite,
   deleteSite,
   redetectPlugin,
+  checkWp,
 } from '../controllers/siteController.js';
 
 const router = Router();
 router.use(requireAuth);
 
+router.post('/check-wp', checkWp); // version + app-password probe (no site id needed)
 router.get('/', listSites);
 router.post('/', createSite);
 router.get('/:id', getSite);

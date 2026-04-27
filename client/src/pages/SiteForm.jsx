@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, User, Lock, FileText, ArrowLeft, Save, AlertCircle, CheckCircle,
-  Info, Download, Puzzle, ArrowRight, ExternalLink,
+  Info, Download, Puzzle, ArrowRight, ExternalLink, ShieldAlert, ShieldCheck,
+  Loader2, RefreshCw,
 } from 'lucide-react';
 import api from '../api/axios';
 
@@ -178,11 +179,121 @@ function PluginStep({ onConfirm }) {
   );
 }
 
+/* ── App Password reason → human-readable help ───────────── */
+const APP_PWD_REASONS = {
+  version_too_old: {
+    title: 'WordPress version too old',
+    color: 'red',
+    steps: [
+      'Application Passwords were added in WordPress 5.6 (Dec 2020).',
+      'Go to Dashboard → Updates → and update WordPress to the latest version.',
+      'After updating, the Application Passwords section will appear in Users → Profile.',
+    ],
+  },
+  no_ssl: {
+    title: 'HTTPS / SSL is required',
+    color: 'amber',
+    steps: [
+      'WordPress disables Application Passwords on non-HTTPS sites by default.',
+      'Option 1: Enable SSL on your hosting (most hosts provide free SSL certificates).',
+      'Option 2: For local dev only, add to wp-config.php: define("WP_ENVIRONMENT_TYPE", "local");',
+    ],
+  },
+  disabled: {
+    title: 'Application Passwords disabled by a plugin or custom code',
+    color: 'amber',
+    steps: [
+      'A security plugin or custom code filter has turned off Application Passwords.',
+      'Check Wordfence → Login Security → "Disable Application Passwords".',
+      'Check iThemes Security → Settings → search "Application Passwords".',
+      'Check All-In-One WP Security → User Accounts for a similar toggle.',
+      'Or search your theme/plugin files for: wp_is_application_passwords_available',
+    ],
+  },
+};
+
+function WpInfoBanner({ info, onRecheck, checking }) {
+  if (!info) return null;
+  const { wpVersion, appPasswordsAvailable, appPasswordReason } = info;
+  const reason = APP_PWD_REASONS[appPasswordReason];
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="wpinfo"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        className="space-y-3"
+      >
+        {/* Version + availability pill row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {wpVersion && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-slate-300">
+              WordPress {wpVersion}
+            </span>
+          )}
+          {appPasswordsAvailable ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+              <ShieldCheck className="w-3 h-3" /> Application Passwords available
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400">
+              <ShieldAlert className="w-3 h-3" /> Application Passwords unavailable
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onRecheck}
+            disabled={checking}
+            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-indigo-500 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`w-3 h-3 ${checking ? 'animate-spin' : ''}`} />
+            Re-check
+          </button>
+        </div>
+
+        {/* Detailed warning when not available */}
+        {!appPasswordsAvailable && reason && (
+          <div className={`p-4 rounded-xl border ${
+            reason.color === 'red'
+              ? 'bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20'
+              : 'bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:border-amber-500/20'
+          }`}>
+            <div className="flex items-start gap-2.5">
+              <ShieldAlert className={`w-4 h-4 flex-shrink-0 mt-0.5 ${reason.color === 'red' ? 'text-red-500' : 'text-amber-500'}`} />
+              <div className="flex-1">
+                <p className={`text-sm font-semibold ${reason.color === 'red' ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                  {reason.title}
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {reason.steps.map((step, i) => (
+                    <li key={i} className={`text-xs leading-relaxed flex gap-2 ${reason.color === 'red' ? 'text-red-600/80 dark:text-red-400/70' : 'text-amber-700/80 dark:text-amber-400/70'}`}>
+                      <span className="font-bold flex-shrink-0">{i + 1}.</span>
+                      <span className="whitespace-pre-line">{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Unknown state — REST root not reachable */}
+        {!appPasswordsAvailable && !reason && (
+          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-xs text-gray-500 dark:text-gray-400">
+            Could not reach the WordPress REST API at this URL. Make sure the URL is correct, the site is online, and the REST API is not blocked by a firewall or security plugin.
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function SiteForm() {
   const { id } = useParams();
   const nav    = useNavigate();
 
-  // Plugin gate: only show on "add" (no id), skip on edit
   const [step, setStep] = useState(id ? 'form' : 'plugin');
 
   const [form, setForm]       = useState({ name: '', siteUrl: '', username: '', appPassword: '', notes: '' });
@@ -190,11 +301,38 @@ export default function SiteForm() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // WP detection state
+  const [wpInfo, setWpInfo]       = useState(null);
+  const [checking, setChecking]   = useState(false);
+  const debounceRef               = useRef(null);
+
   useEffect(() => {
     if (id) api.get(`/sites/${id}`).then((r) => setForm({ ...r.data, appPassword: '' }));
   }, [id]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Auto-detect WP info when URL changes (debounced)
+  const runCheck = async (url) => {
+    if (!url || !url.startsWith('http')) return;
+    setChecking(true);
+    try {
+      const { data } = await api.post('/sites/check-wp', { siteUrl: url });
+      setWpInfo(data);
+    } catch (_) {
+      setWpInfo(null);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const onUrlChange = (e) => {
+    const val = e.target.value;
+    setForm((f) => ({ ...f, siteUrl: val }));
+    setWpInfo(null);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => runCheck(val), 900);
+  };
 
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true);
@@ -265,9 +403,32 @@ export default function SiteForm() {
         </AnimatePresence>
 
         <form onSubmit={submit} className="space-y-4">
-          <FloatingInput label="Site Name"    icon={Globe} value={form.name}     onChange={set('name')}     required />
-          <FloatingInput label="Site URL"     icon={Globe} value={form.siteUrl}  onChange={set('siteUrl')}  required />
-          <FloatingInput label="WP Username"  icon={User}  value={form.username} onChange={set('username')} required />
+          <FloatingInput label="Site Name"   icon={Globe} value={form.name}    onChange={set('name')}    required />
+
+          {/* URL field with inline checking spinner */}
+          <div className="space-y-1.5">
+            <div className="relative">
+              <FloatingInput
+                label="Site URL"
+                icon={Globe}
+                value={form.siteUrl}
+                onChange={onUrlChange}
+                required
+              />
+              {checking && (
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                </div>
+              )}
+            </div>
+            <WpInfoBanner
+              info={wpInfo}
+              checking={checking}
+              onRecheck={() => runCheck(form.siteUrl)}
+            />
+          </div>
+
+          <FloatingInput label="WP Username" icon={User} value={form.username} onChange={set('username')} required />
           <FloatingInput
             label={id ? 'App Password (leave blank to keep current)' : 'Application Password'}
             icon={Lock} type="password" value={form.appPassword} onChange={set('appPassword')} required={!id}

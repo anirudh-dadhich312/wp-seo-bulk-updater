@@ -1,8 +1,24 @@
 import Site from '../models/Site.js';
 import { encrypt } from '../services/cryptoService.js';
-import { testConnection } from '../services/wpClient.js';
+import { testConnection, detectWpInfo } from '../services/wpClient.js';
 import { detectSEOPlugin, detectForSite } from '../services/pluginDetector.js';
 import { buildAccessFilter } from '../services/accessControl.js';
+
+/**
+ * Lightweight pre-check: given just a siteUrl, probe the WP REST root
+ * and return version + app-password availability.
+ * Called before the user submits credentials, so they know what to expect.
+ */
+export const checkWp = async (req, res, next) => {
+  try {
+    const { siteUrl } = req.body;
+    if (!siteUrl) return res.status(400).json({ error: 'siteUrl required' });
+    const info = await detectWpInfo(siteUrl);
+    res.json(info);
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const listSites = async (req, res, next) => {
   try {
@@ -44,6 +60,7 @@ export const createSite = async (req, res, next) => {
       siteUrl:              siteUrl.replace(/\/$/, ''),
       username,
       appPasswordEncrypted: encrypt(appPassword),
+      wpVersion:            conn.wpVersion || null,
       detectedPlugin:       plugin,
       lastDetectedAt:       new Date(),
       notes,

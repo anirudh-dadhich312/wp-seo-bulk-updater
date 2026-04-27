@@ -14,12 +14,21 @@ import userRoutes          from './routes/users.js';
 import teamRoutes          from './routes/teams.js';
 import pluginRoutes        from './routes/plugin.js';
 import inviteRequestRoutes from './routes/inviteRequests.js';
+import altTagJobRoutes     from './routes/altTagJobs.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl, Postman, same-origin SSR)
+    if (!origin) return cb(null, true);
+    if (env.CLIENT_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 // Compress all JSON/text responses — measurable wins on job rows payloads
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
@@ -54,6 +63,7 @@ app.use('/api/users',           userRoutes);
 app.use('/api/teams',           teamRoutes);
 app.use('/api/plugin',          pluginRoutes);
 app.use('/api/invite-requests', inviteRequestRoutes);
+app.use('/api/alt-tag-jobs',   altTagJobRoutes);
 
 app.use(errorHandler);
 
