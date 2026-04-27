@@ -163,9 +163,12 @@ export const cancelJob = async (req, res, next) => {
 };
 
 /**
- * SSE endpoint — streams real-time progress events while a job is running.
- * EventSource can't send custom headers, so the token is accepted via ?token=
- * (handled in requireAuth middleware).
+ * SSE endpoint — streams real-time job progress without any client polling.
+ *
+ * Why the poll loop: runBulkJob fires async after POST /run responds.
+ * The emitter is created inside runBulkJob (after DB + plugin detection),
+ * so the client can connect here before the emitter exists. We wait up to
+ * 4 s for it to appear rather than immediately sending a false 'done'.
  */
 export const streamJobProgress = async (req, res) => {
   try {
@@ -175,42 +178,88 @@ export const streamJobProgress = async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx / Vite proxy buffering
     res.flushHeaders();
 
-    const send = (type, data) =>
-      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    // Track client disconnect so we can stop all async work immediately
+    let clientGone = false;
+    req.on('close', () => { clientGone = true; });
 
-    // Immediately send current DB state so the client has something to render
-    send('snapshot', {
-      status: job.status,
+    const write = (type, data) => {
+      if (!clientGone) res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    };
+
+    // Send current DB state immediately so the UI has something to show
+    write('snapshot', {
+      status:       job.status,
       successCount: job.successCount,
-      failedCount: job.failedCount,
-      totalRows: job.totalRows,
+      failedCount:  job.failedCount,
+      totalRows:    job.totalRows,
     });
 
-    const emitter = getJobEmitter(String(job._id));
+    // Heartbeat comment every 25 s — keeps the connection alive through
+    // proxies and nginx that close idle streams after 30–60 s.
+    const heartbeat = setInterval(() => {
+      if (clientGone) return clearInterval(heartbeat);
+      res.write(': ping\n\n');
+    }, 25_000);
 
-    // Job isn't running (already done, or emitter cleaned up) — close immediately
-    if (!emitter) {
-      send('done', { successCount: job.successCount, failedCount: job.failedCount, totalRows: job.totalRows });
-      res.end();
-      return;
-    }
+    let activeEmitter = null;
 
-    const onProgress = (data) => send('progress', data);
-    const onDone = (data) => { send('done', data); res.end(); };
+    const detach = () => {
+      clearInterval(heartbeat);
+      if (activeEmitter) {
+        activeEmitter.off('progress', onProgress);
+        activeEmitter.off('done',     onDone);
+        activeEmitter = null;
+      }
+    };
 
-    emitter.on('progress', onProgress);
-    emitter.once('done', onDone);
+    req.on('close', detach);
 
-    // Clean up listeners if the client disconnects early
-    req.on('close', () => {
-      emitter.off('progress', onProgress);
-      emitter.off('done', onDone);
-    });
+    const onProgress = (data) => write('progress', data);
+
+    const onDone = (data) => {
+      write('done', data);
+      detach();
+      if (!clientGone) res.end();
+    };
+
+    // Poll for the emitter — it's registered async inside runBulkJob.
+    // 100 ms × 40 attempts = 4 s maximum wait before giving up.
+    let attempts = 0;
+    const attach = () => {
+      if (clientGone) return;                          // client left while we waited
+
+      const emitter = getJobEmitter(String(job._id));
+
+      if (emitter) {
+        activeEmitter = emitter;
+        emitter.on('progress', onProgress);
+        emitter.once('done',   onDone);
+        return;
+      }
+
+      if (++attempts >= 40) {
+        // Job is not (or no longer) running — send final DB state and close
+        write('done', {
+          status:       job.status,
+          successCount: job.successCount,
+          failedCount:  job.failedCount,
+          totalRows:    job.totalRows,
+        });
+        detach();
+        res.end();
+        return;
+      }
+
+      setTimeout(attach, 100);
+    };
+
+    attach();
   } catch (err) {
     console.error('[SSE] error', err);
-    res.end();
+    if (!res.headersSent) res.status(500).end();
+    else res.end();
   }
 };

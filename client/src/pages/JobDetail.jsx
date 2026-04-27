@@ -28,63 +28,83 @@ const SSE_BASE = import.meta.env.VITE_API_URL
 
 export default function JobDetail() {
   const { id } = useParams();
-  const [job,       setJob]      = useState(null);
-  const [editing,   setEditing]  = useState(false);
-  const [rows,      setRows]     = useState([]);
-  const [liveStats,   setLiveStats]   = useState(null); // real-time counts from SSE
-  const [sseActive,   setSseActive]   = useState(false);
-  const [cancelling,  setCancelling]  = useState(false);
-  const sseRef    = useRef(null);
-  const pollRef   = useRef(null);
-  const editingRef = useRef(false);
+  const [job,        setJob]       = useState(null);
+  const [editing,    setEditing]   = useState(false);
+  const [rows,       setRows]      = useState([]);
+  const [liveStats,  setLiveStats] = useState(null);
+  const [sseActive,  setSseActive] = useState(false);
+  const [cancelling, setCancelling]= useState(false);
+
+  const sseRef      = useRef(null);   // active EventSource
+  const retryRef    = useRef(null);   // retry timer
+  const retryCount  = useRef(0);
+  const editingRef  = useRef(false);
+  const unmounted   = useRef(false);
 
   editingRef.current = editing;
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/jobs/${id}`);
+    if (unmounted.current) return data;
     setJob(data);
-    setLiveStats(null); // reset live overlay once we have fresh DB data
+    setLiveStats(null);
     if (!editingRef.current) setRows(data.rows);
     return data;
   }, [id]);
 
-  // Opens an SSE connection and drives real-time progress updates
+  const closeSse = useCallback(() => {
+    clearTimeout(retryRef.current);
+    sseRef.current?.close();
+    sseRef.current = null;
+    setSseActive(false);
+  }, []);
+
+  // Opens a single EventSource connection. On error, retries with capped
+  // exponential backoff (1 s → 2 s → 4 s → 8 s, max 3 retries then gives up).
+  // Never falls back to API polling — the server holds the connection open.
   const openSse = useCallback(() => {
-    if (sseRef.current) return;
+    if (sseRef.current || unmounted.current) return;
     const token = localStorage.getItem('token');
     if (!token) return;
 
+    // Use the Vite dev-proxy path (/api/…) — works in both dev and prod
     const url = `${SSE_BASE}/api/jobs/${id}/events?token=${encodeURIComponent(token)}`;
     const es = new EventSource(url);
     sseRef.current = es;
     setSseActive(true);
 
     es.onmessage = (e) => {
+      if (unmounted.current) return;
       try {
         const msg = JSON.parse(e.data);
 
         if (msg.type === 'snapshot') {
+          retryCount.current = 0; // successful connection — reset backoff
           setJob((prev) => {
             if (!prev) return prev;
-            // Never downgrade from 'running' to 'draft' — the DB write inside
-            // runBulkJob is async and may not have landed by the time we connect.
-            const status = prev.status === 'running' && msg.status === 'draft'
-              ? 'running'
-              : msg.status;
+            // Don't downgrade 'running' → 'draft': DB write is async and may
+            // not have landed yet when we read the snapshot.
+            const status =
+              prev.status === 'running' && msg.status === 'draft'
+                ? 'running'
+                : msg.status;
             return { ...prev, status };
           });
-          // Seed live counts from snapshot so progress shows immediately
           setLiveStats({ successCount: msg.successCount, failedCount: msg.failedCount });
         }
 
         if (msg.type === 'progress') {
-          // Update live counters and per-row statuses in real time
           setLiveStats({ successCount: msg.successCount, failedCount: msg.failedCount });
           if (!editingRef.current) {
             setRows((prev) => {
               const next = [...prev];
-              if (next[msg.rowIndex]) {
-                next[msg.rowIndex] = { ...next[msg.rowIndex], status: msg.rowStatus };
+              if (next[msg.rowIndex] !== undefined) {
+                next[msg.rowIndex] = {
+                  ...next[msg.rowIndex],
+                  status: msg.rowStatus,
+                  // error is now piped directly through SSE — no extra fetch needed
+                  ...(msg.rowError ? { error: msg.rowError } : {}),
+                };
               }
               return next;
             });
@@ -95,53 +115,52 @@ export default function JobDetail() {
           es.close();
           sseRef.current = null;
           setSseActive(false);
-          // Full reload from DB to get final authoritative state
+          // One authoritative reload from DB after the job finishes
           load();
         }
       } catch (_) {}
     };
 
     es.onerror = () => {
-      // SSE connection dropped — fall back to polling
+      if (unmounted.current) return;
       es.close();
       sseRef.current = null;
       setSseActive(false);
-      if (!pollRef.current) {
-        pollRef.current = setInterval(load, 2000);
-      }
-    };
-  }, [id, load]);
 
-  const closeSse = useCallback(() => {
-    sseRef.current?.close();
-    sseRef.current = null;
-    setSseActive(false);
-  }, []);
+      const MAX_RETRIES = 3;
+      if (retryCount.current < MAX_RETRIES) {
+        // Exponential backoff: 1 s, 2 s, 4 s
+        const delay = Math.pow(2, retryCount.current) * 1000;
+        retryCount.current += 1;
+        retryRef.current = setTimeout(() => {
+          if (!unmounted.current) openSse();
+        }, delay);
+      }
+      // After MAX_RETRIES the user sees the last known state.
+      // They can refresh the page if the job is still running.
+    };
+  }, [id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial load
   useEffect(() => {
+    unmounted.current = false;
     load();
     return () => {
+      unmounted.current = true;
       closeSse();
-      clearInterval(pollRef.current);
     };
-  }, [id]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // React to job status changes
+  // Open / close SSE based on job status
   useEffect(() => {
     if (!job) return;
-
     if (job.status === 'running') {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
       openSse();
     } else {
       closeSse();
-      clearInterval(pollRef.current);
-      pollRef.current = null;
       setCancelling(false);
     }
-  }, [job?.status]);
+  }, [job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!job) return (
     <div className="flex items-center gap-3 text-gray-400 p-8">

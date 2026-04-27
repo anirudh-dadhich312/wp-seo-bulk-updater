@@ -148,9 +148,10 @@ export const runBulkJob = async (jobId, userId) => {
           successCount,
           failedCount,
           skippedCount,
-          totalRows: job.totalRows,
-          rowIndex: idx,
-          rowStatus: rowUpdate[`rows.${idx}.status`],
+          totalRows:  job.totalRows,
+          rowIndex:   idx,
+          rowStatus:  rowUpdate[`rows.${idx}.status`],
+          rowError:   rowUpdate[`rows.${idx}.error`] || null,
         });
       })
     )
