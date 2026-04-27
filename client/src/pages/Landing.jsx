@@ -60,12 +60,12 @@ const FRAG = /* glsl */`
 
   void main() {
     vec2 uv = vUv;
-    float t  = uTime * 0.055;
+    float t  = uTime * 0.05;
 
-    // mouse warp
-    vec2 m  = uMouse * 0.5 + 0.5;
+    // mouse warp — stronger distortion radius
+    vec2 m   = uMouse * 0.5 + 0.5;
     float md = length(uv - m);
-    uv += (m - uv) * 0.12 * smoothstep(0.6, 0.0, md);
+    uv += (m - uv) * 0.18 * smoothstep(0.55, 0.0, md);
 
     vec2 q = vec2(fbm(uv + t), fbm(uv + vec2(5.2, 1.3)));
     vec2 r = vec2(
@@ -74,14 +74,21 @@ const FRAG = /* glsl */`
     );
     float f = fbm(uv + r);
 
-    vec3 col = mix(vec3(0.0, 0.0, 0.01),  vec3(0.04, 0.0, 0.12),  clamp(f*2.0,0.0,1.0));
-    col       = mix(col, vec3(0.12, 0.03, 0.38), clamp(f*f*3.5,0.0,1.0));
-    col       = mix(col, vec3(0.28, 0.08, 0.70), clamp(pow(f,3.0)*4.0,0.0,1.0));
-    col       = mix(col, vec3(0.55, 0.20, 1.00), clamp(pow(f,5.0)*6.0,0.0,1.0));
+    // Brighter, more saturated palette
+    // dark navy → rich indigo → vibrant violet → bright cyan highlight
+    vec3 col = mix(vec3(0.01, 0.01, 0.06),  vec3(0.08, 0.02, 0.28),  clamp(f*2.2,0.0,1.0));
+    col       = mix(col, vec3(0.22, 0.06, 0.65),  clamp(f*f*4.0,0.0,1.0));
+    col       = mix(col, vec3(0.45, 0.15, 0.95),  clamp(pow(f,2.5)*3.5,0.0,1.0));
+    col       = mix(col, vec3(0.60, 0.35, 1.00),  clamp(pow(f,4.0)*5.0,0.0,1.0));
+    // cyan/teal accent at peaks
+    col       = mix(col, vec3(0.20, 0.85, 1.00),  clamp(pow(f,7.0)*4.0,0.0,1.0));
 
-    // vignette
+    // lighter vignette so edges are not pitch-black
     vec2 vc = vUv - 0.5;
-    col *= 1.0 - dot(vc,vc) * 2.2;
+    col *= 1.0 - dot(vc,vc) * 1.4;
+
+    // global brightness lift — never let it go fully black
+    col = max(col, vec3(0.02, 0.01, 0.07));
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -191,7 +198,7 @@ function ParticleSwarm() {
 function MouseOrb() {
   const meshRef = useRef();
   const mouse   = useRef({ x: 0, y: 0 });
-  const { size, camera } = useThree();
+  const { size } = useThree();
 
   useEffect(() => {
     const onMove = (e) => {
@@ -211,21 +218,19 @@ function MouseOrb() {
     meshRef.current.position.y += (mouse.current.y * 1.6 - meshRef.current.position.y) * 0.06;
     meshRef.current.rotation.x = t * 0.3;
     meshRef.current.rotation.y = t * 0.2;
-    const pulse = 1 + Math.sin(t * 1.5) * 0.07;
-    meshRef.current.scale.setScalar(pulse);
+    meshRef.current.scale.setScalar(1 + Math.sin(t * 1.5) * 0.08);
   });
 
   return (
     <mesh ref={meshRef} position={[0, 0, 0]}>
-      <icosahedronGeometry args={[0.55, 4]} />
+      <icosahedronGeometry args={[0.65, 4]} />
       <meshStandardMaterial
-        color="#7c3aed"
-        emissive="#4c1d95"
-        emissiveIntensity={0.6}
-        wireframe={false}
-        roughness={0.1}
-        metalness={0.9}
-        transparent opacity={0.55}
+        color="#a78bfa"
+        emissive="#7c3aed"
+        emissiveIntensity={1.4}
+        roughness={0.05}
+        metalness={0.95}
+        transparent opacity={0.75}
       />
     </mesh>
   );
@@ -242,16 +247,16 @@ function FloatingRings() {
   return (
     <>
       <mesh ref={r1} position={[3.5, 1.5, -1.5]}>
-        <torusGeometry args={[0.8, 0.02, 16, 80]} />
-        <meshBasicMaterial color="#6366f1" transparent opacity={0.3} />
+        <torusGeometry args={[0.9, 0.025, 16, 80]} />
+        <meshBasicMaterial color="#818cf8" transparent opacity={0.55} />
       </mesh>
       <mesh ref={r2} position={[-3, -1.2, -1]}>
-        <torusGeometry args={[0.55, 0.015, 16, 80]} />
-        <meshBasicMaterial color="#8b5cf6" transparent opacity={0.2} />
+        <torusGeometry args={[0.6, 0.018, 16, 80]} />
+        <meshBasicMaterial color="#c4b5fd" transparent opacity={0.45} />
       </mesh>
       <mesh ref={r3} position={[2, -2.5, -2]}>
-        <torusKnotGeometry args={[0.4, 0.06, 120, 16]} />
-        <meshBasicMaterial color="#4f46e5" wireframe transparent opacity={0.25} />
+        <torusKnotGeometry args={[0.45, 0.07, 120, 16]} />
+        <meshBasicMaterial color="#6366f1" wireframe transparent opacity={0.5} />
       </mesh>
     </>
   );
@@ -262,10 +267,10 @@ function FloatingRings() {
 ═══════════════════════════════════════════════════════ */
 function CustomCursor() {
   const mx = useMotionValue(-200); const my = useMotionValue(-200);
-  const sx = useSpring(mx, { stiffness: 500, damping: 35 });
-  const sy = useSpring(my, { stiffness: 500, damping: 35 });
-  const lx = useSpring(mx, { stiffness: 90,  damping: 22 });
-  const ly = useSpring(my, { stiffness: 90,  damping: 22 });
+  const sx = useSpring(mx, { stiffness: 600, damping: 38 });
+  const sy = useSpring(my, { stiffness: 600, damping: 38 });
+  const lx = useSpring(mx, { stiffness: 80,  damping: 20 });
+  const ly = useSpring(my, { stiffness: 80,  damping: 20 });
   const [active, setActive] = useState(false);
 
   useEffect(() => {
@@ -284,15 +289,29 @@ function CustomCursor() {
 
   return (
     <>
+      {/* Inner dot — always visible bright indigo */}
       <motion.div
-        style={{ x: sx, y: sy, translateX:'-50%', translateY:'-50%' }}
-        className="fixed top-0 left-0 z-[9999] pointer-events-none w-2 h-2 bg-white rounded-full mix-blend-difference"
+        style={{ x: sx, y: sy, translateX: '-50%', translateY: '-50%' }}
+        animate={{ scale: active ? 0 : 1 }}
+        transition={{ scale: { duration: 0.15 } }}
+        className="fixed top-0 left-0 z-[9999] pointer-events-none w-2.5 h-2.5 rounded-full"
+        style={{
+          x: sx, y: sy, translateX: '-50%', translateY: '-50%',
+          background: '#818cf8',
+          boxShadow: '0 0 8px 2px rgba(129,140,248,0.8)',
+        }}
       />
+      {/* Outer ring — lags behind, expands on hover */}
       <motion.div
-        style={{ x: lx, y: ly, translateX:'-50%', translateY:'-50%' }}
-        animate={{ scale: active ? 2.8 : 1, opacity: active ? 0.5 : 0.25 }}
-        transition={{ scale:{ duration: 0.25 } }}
-        className="fixed top-0 left-0 z-[9998] pointer-events-none w-10 h-10 rounded-full border border-white mix-blend-difference"
+        style={{ x: lx, y: ly, translateX: '-50%', translateY: '-50%' }}
+        animate={{ scale: active ? 2.2 : 1 }}
+        transition={{ scale: { duration: 0.2 } }}
+        className="fixed top-0 left-0 z-[9998] pointer-events-none w-10 h-10 rounded-full"
+        style={{
+          x: lx, y: ly, translateX: '-50%', translateY: '-50%',
+          border: '1.5px solid rgba(129,140,248,0.55)',
+          boxShadow: '0 0 12px 2px rgba(129,140,248,0.2)',
+        }}
       />
     </>
   );
@@ -409,8 +428,8 @@ function Marquee({ items, speed = 32, dir = 1 }) {
           <span key={r} className="flex items-center">
             {items.map((item, i) => (
               <span key={i} className="inline-flex items-center gap-6 mx-6">
-                <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-white/25">{item}</span>
-                <span className="w-1 h-1 rounded-full bg-indigo-500/40 flex-shrink-0" />
+                <span className="text-[11px] font-bold tracking-[0.25em] uppercase text-white/50">{item}</span>
+                <span className="w-1 h-1 rounded-full bg-indigo-400/70 flex-shrink-0" />
               </span>
             ))}
           </span>
@@ -452,7 +471,7 @@ function Navbar({ user }) {
         <nav className="hidden md:flex items-center gap-10">
           {[['Features','#features'],['Process','#process'],['Plugins','#plugins']].map(([l,h]) => (
             <a key={h} href={h} style={{ fontFamily:'Space Grotesk,sans-serif' }}
-              className="text-[11px] font-semibold text-white/40 hover:text-white tracking-[0.18em] uppercase transition-colors duration-300">{l}</a>
+              className="text-[11px] font-semibold text-white/60 hover:text-white tracking-[0.18em] uppercase transition-colors duration-300">{l}</a>
           ))}
         </nav>
 
@@ -464,7 +483,7 @@ function Navbar({ user }) {
           ) : (
             <>
               <Link to="/login" style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                className="text-[11px] font-semibold text-white/40 hover:text-white tracking-[0.15em] uppercase transition-colors">Sign in</Link>
+                className="text-[11px] font-semibold text-white/60 hover:text-white tracking-[0.15em] uppercase transition-colors">Sign in</Link>
               <MagneticBtn to="/register"
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-600/30">
                 Get started <ArrowRight className="w-3.5 h-3.5" />
@@ -541,9 +560,9 @@ function Hero({ user }) {
             transition={{ delay: 0.2, duration: 0.7, ease: [0.16,1,0.3,1] }}
             className="flex items-center gap-3 mb-10"
           >
-            <span className="w-8 h-px bg-indigo-500" />
+            <span className="w-8 h-px bg-indigo-400" />
             <span style={{ fontFamily: 'Space Mono, monospace' }}
-              className="text-[10px] text-indigo-400 tracking-[0.3em] uppercase">WordPress SEO Automation</span>
+              className="text-[10px] text-indigo-300 tracking-[0.3em] uppercase">WordPress SEO Automation</span>
           </motion.div>
 
           {/* Hero headline — massive mixed typography */}
@@ -615,8 +634,8 @@ function Hero({ user }) {
             )}
 
             <div style={{ fontFamily: 'Space Mono, monospace' }}
-              className="flex items-center gap-2 text-white/30 text-[10px] tracking-widest uppercase">
-              <CheckCircle2 className="w-3.5 h-3.5 text-indigo-500" />
+              className="flex items-center gap-2 text-white/50 text-[10px] tracking-widest uppercase">
+              <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
               No card required
             </div>
           </motion.div>
@@ -631,10 +650,10 @@ function Hero({ user }) {
           <motion.div
             animate={{ y: [0, 8, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-            className="w-px h-12 bg-gradient-to-b from-transparent via-white/30 to-transparent"
+            className="w-px h-12 bg-gradient-to-b from-transparent via-white/50 to-transparent"
           />
           <span style={{ fontFamily:'Space Mono,monospace' }}
-            className="text-[9px] text-white/25 tracking-[0.3em] uppercase [writing-mode:vertical-rl]">Scroll</span>
+            className="text-[9px] text-white/45 tracking-[0.3em] uppercase [writing-mode:vertical-rl]">Scroll</span>
         </motion.div>
       </div>
 
@@ -660,20 +679,20 @@ function Stats() {
     <section className="py-28 px-6 lg:px-12">
       <div className="max-w-[1400px] mx-auto">
         <Reveal className="flex items-center gap-3 mb-16">
-          <span className="w-8 h-px bg-white/20" />
+          <span className="w-8 h-px bg-indigo-500/60" />
           <span style={{ fontFamily:'Space Mono,monospace' }}
-            className="text-[10px] text-white/30 tracking-[0.3em] uppercase">By the numbers</span>
+            className="text-[10px] text-indigo-400 tracking-[0.3em] uppercase">By the numbers</span>
         </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-white/[0.05] border border-white/[0.05] rounded-2xl overflow-hidden">
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-white/[0.08] border border-white/[0.08] rounded-2xl overflow-hidden">
           {stats.map(({ n, s, label }, i) => (
             <Reveal key={i} delay={i * 0.07}>
-              <div className="p-8 sm:p-10 group hover:bg-white/[0.025] transition-colors duration-500">
+              <div className="p-8 sm:p-10 group hover:bg-white/[0.04] transition-colors duration-500">
                 <p style={{ fontFamily:'Syne,sans-serif', lineHeight:1 }}
                   className="text-5xl sm:text-6xl font-black text-white mb-3 tracking-tight">
                   <CountUp target={n} suffix={s} />
                 </p>
                 <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                  className="text-xs text-white/30 whitespace-pre-line leading-relaxed font-medium">{label}</p>
+                  className="text-sm text-white/55 whitespace-pre-line leading-relaxed font-medium">{label}</p>
               </div>
             </Reveal>
           ))}
@@ -710,29 +729,29 @@ function Features() {
           </Reveal>
           <Reveal delay={0.1}>
             <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-              className="text-white/35 max-w-xs text-sm leading-relaxed lg:text-right">
+              className="text-white/55 max-w-xs text-sm leading-relaxed lg:text-right">
               Built for agencies, SEO teams, and freelancers who manage WordPress at scale.
             </p>
           </Reveal>
         </div>
 
-        <div className="divide-y divide-white/[0.05]">
+        <div className="divide-y divide-white/[0.08]">
           {list.map((f, i) => (
             <Reveal key={f.n} delay={0} y={12}>
-              <div className="group flex items-start gap-6 sm:gap-10 py-5 sm:py-6 px-3 -mx-3 rounded-xl hover:bg-white/[0.025] transition-all duration-400">
+              <div className="group flex items-start gap-6 sm:gap-10 py-5 sm:py-6 px-3 -mx-3 rounded-xl hover:bg-white/[0.04] transition-all duration-300">
                 <span style={{ fontFamily:'Space Mono,monospace' }}
-                  className="text-xs text-white/20 mt-1.5 w-6 flex-shrink-0">{f.n}</span>
+                  className="text-xs text-white/35 mt-1.5 w-6 flex-shrink-0">{f.n}</span>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background:`${f.c}15`, border:`1px solid ${f.c}28` }}>
+                  style={{ background:`${f.c}22`, border:`1px solid ${f.c}45` }}>
                   <f.icon className="w-4 h-4" style={{ color: f.c }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 style={{ fontFamily:'Syne,sans-serif' }}
                     className="font-bold text-white text-base mb-1.5 group-hover:text-indigo-300 transition-colors">{f.title}</h3>
                   <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                    className="text-sm text-white/30 leading-relaxed max-w-lg">{f.body}</p>
+                    className="text-sm text-white/55 leading-relaxed max-w-lg">{f.body}</p>
                 </div>
-                <ArrowUpRight className="w-4 h-4 text-white/15 group-hover:text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all flex-shrink-0 mt-1.5" />
+                <ArrowUpRight className="w-4 h-4 text-white/25 group-hover:text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all flex-shrink-0 mt-1.5" />
               </div>
             </Reveal>
           ))}
@@ -779,7 +798,7 @@ function Process() {
                 <h3 style={{ fontFamily:'Syne,sans-serif' }}
                   className="font-black text-white text-xl mb-3 leading-tight">{s.title}</h3>
                 <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                  className="text-sm text-white/30 leading-relaxed">{s.body}</p>
+                  className="text-sm text-white/60 leading-relaxed">{s.body}</p>
 
                 {/* Hover glow */}
                 <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
@@ -832,7 +851,7 @@ function Plugins() {
                 <h3 style={{ fontFamily:'Syne,sans-serif' }}
                   className="font-black text-white text-base mb-1.5">{p.name}</h3>
                 <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                  className="text-xs text-white/30 mb-5">{p.desc}</p>
+                  className="text-xs text-white/55 mb-5">{p.desc}</p>
                 <div className="inline-flex items-center gap-2" style={{ fontFamily:'Space Mono,monospace' }}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-[10px] text-emerald-400 tracking-widest uppercase font-bold">Auto-detected</span>
@@ -882,7 +901,7 @@ function CTA({ user }) {
               </ClipReveal>
               <Reveal delay={0.3}>
                 <p style={{ fontFamily:'Space Grotesk,sans-serif' }}
-                  className="text-white/40 max-w-md mx-auto text-base sm:text-lg leading-relaxed mb-10">
+                  className="text-white/65 max-w-md mx-auto text-base sm:text-lg leading-relaxed mb-10">
                   Join hundreds of SEO teams and agencies saving hours every week with automated bulk updates.
                 </p>
               </Reveal>
@@ -935,13 +954,13 @@ function Footer() {
           <span style={{ fontFamily:'Syne,sans-serif' }} className="text-sm font-bold text-white">SEO Bulk Updater</span>
         </div>
         <p style={{ fontFamily:'Space Mono,monospace' }}
-          className="text-[10px] text-white/20 tracking-[0.25em] uppercase">
+          className="text-[10px] text-white/35 tracking-[0.25em] uppercase">
           © {new Date().getFullYear()} All rights reserved
         </p>
         <div className="flex items-center gap-6">
           {[['Login','/login'],['Register','/register'],['Request Access','/request-access']].map(([l,h]) => (
             <Link key={h} to={h} style={{ fontFamily:'Space Mono,monospace' }}
-              className="text-[10px] text-white/20 hover:text-white/60 tracking-[0.2em] uppercase transition-colors">{l}</Link>
+              className="text-[10px] text-white/35 hover:text-white/70 tracking-[0.2em] uppercase transition-colors">{l}</Link>
           ))}
         </div>
       </div>
@@ -957,7 +976,7 @@ const TICKER = ['Yoast SEO','Rank Math','AIOSEO','Bulk Updates','Meta Titles','D
 export default function Landing() {
   const { user } = useAuth();
   return (
-    <div className="min-h-screen bg-[#030309] text-white overflow-x-hidden" style={{ cursor:'none' }}>
+    <div className="landing-cursor-none min-h-screen bg-[#030309] text-white overflow-x-hidden">
       <CustomCursor />
       <GrainOverlay />
       <Navbar user={user} />
