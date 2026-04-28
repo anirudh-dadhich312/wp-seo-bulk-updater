@@ -56,10 +56,12 @@ const discoverTaxonomies = async (wp) => {
  * Returns the post object or null.
  */
 const findPostBySlug = async (wp, restBase, slug) => {
-  // Primary: authenticated edit query — sees all statuses
+  // Only match PUBLISHED posts. status=any was previously used here, but it can
+  // return draft/private duplicates of the same slug ahead of the real published
+  // post (REST sorts by date desc), causing writes to land on the wrong post.
   try {
     const res = await wp.get(`/wp-json/wp/v2/${restBase}`, {
-      params: { slug, status: 'any', _fields: 'id,slug,link', context: 'edit' },
+      params: { slug, status: 'publish', _fields: 'id,slug,link', context: 'edit' },
     });
     if (Array.isArray(res.data) && res.data.length > 0) return res.data[0];
   } catch {

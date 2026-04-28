@@ -86,12 +86,34 @@ add_action('rest_api_init', function () use ($SEO_BRIDGE_POST_META_KEYS) {
                 'meta_key'   => $meta_key,
                 'meta_value' => maybe_serialize($meta_payload[$meta_key]),
             ], ['%d', '%s', '%s']);
+            $meta_id  = (int) $wpdb->insert_id;
             $modified = true;
+
+            // Fire WordPress's standard meta-update actions so plugins like Yoast that
+            // hook into them (to clear their own internal title/description caches)
+            // see the change. We bypass update_post_meta so these don't fire on their own.
+            do_action('updated_post_meta', $meta_id, $post_id, $meta_key, $meta_payload[$meta_key]);
+            do_action('updated_postmeta',  $meta_id, $post_id, $meta_key, $meta_payload[$meta_key]);
         }
 
         if ($modified) {
             wp_cache_delete($post_id, 'post_meta');
             clean_post_cache($post_id);
+
+            // Yoast-specific: clear its indexable cache so the next frontend render
+            // pulls the fresh title/description from postmeta instead of a cached row.
+            if (class_exists('\\Yoast\\WP\\SEO\\Repositories\\Indexable_Repository')) {
+                try {
+                    $repo = \YoastSEO()->classes->get(\Yoast\WP\SEO\Repositories\Indexable_Repository::class);
+                    $indexable = $repo->find_by_id_and_type($post_id, 'post');
+                    if ($indexable) { $indexable->object_last_modified = current_time('mysql'); $indexable->save(); }
+                } catch (\Throwable $e) {}
+            }
+            // Older Yoast / general fallback: invalidate the indexable row directly.
+            $indexable_table = $wpdb->prefix . 'yoast_indexable';
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $indexable_table)) === $indexable_table) {
+                $wpdb->delete($indexable_table, ['object_id' => $post_id, 'object_type' => 'post'], ['%d', '%s']);
+            }
 
             // Clear per-post page cache for common caching plugins so the
             // frontend immediately reflects the new SEO meta without a manual flush.
