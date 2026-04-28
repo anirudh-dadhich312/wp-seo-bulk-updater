@@ -241,13 +241,26 @@ export const streamJobProgress = async (req, res) => {
       }
 
       if (++attempts >= 40) {
-        // Job is not (or no longer) running — send final DB state and close
-        write('done', {
-          status:       job.status,
-          successCount: job.successCount,
-          failedCount:  job.failedCount,
-          totalRows:    job.totalRows,
-        });
+        // Emitter never appeared — job finished, crashed, or was killed by SIGTERM.
+        // Re-read from DB for fresh status so the client doesn't get a stale
+        // 'running' status that causes it to reconnect in an infinite loop.
+        try {
+          const fresh = await Job.findById(job._id).lean();
+          const finalStatus = (fresh?.status === 'running') ? 'failed' : (fresh?.status || 'failed');
+          write('done', {
+            status:       finalStatus,
+            successCount: fresh?.successCount ?? job.successCount,
+            failedCount:  fresh?.failedCount  ?? job.failedCount,
+            totalRows:    fresh?.totalRows    ?? job.totalRows,
+          });
+          // If the job is still marked running in the DB (process was killed),
+          // update it to failed so subsequent page loads show the correct state.
+          if (fresh?.status === 'running') {
+            await Job.findByIdAndUpdate(job._id, { status: 'failed', completedAt: new Date() });
+          }
+        } catch (_) {
+          write('done', { status: 'failed', successCount: 0, failedCount: 0, totalRows: job.totalRows });
+        }
         detach();
         res.end();
         return;

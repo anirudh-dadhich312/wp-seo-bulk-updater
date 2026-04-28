@@ -195,7 +195,8 @@ export const runBulkJob = async (jobId, userId) => {
             break; // success — exit retry loop
           } catch (err) {
             // Retry on transient network/server errors (timeout, 5xx, rate-limit)
-            if (isTransientError(err) && attempt < MAX_RETRIES) {
+            // but only if the job hasn't been cancelled.
+            if (isTransientError(err) && attempt < MAX_RETRIES && !cancelRequests.has(String(jobId))) {
               attempt++;
               await delay(RETRY_DELAY_BASE * attempt); // 2s, then 4s
               continue; // retry

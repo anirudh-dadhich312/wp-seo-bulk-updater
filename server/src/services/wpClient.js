@@ -20,7 +20,7 @@ export const createWpClient = (site) => {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    timeout: 25000,
+    timeout: 15000, // 15s per request — shorter window so cancel/stop is responsive
   });
 };
 

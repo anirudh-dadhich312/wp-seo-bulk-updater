@@ -19,6 +19,11 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// Railway (and most PaaS) sits behind a reverse proxy that sets X-Forwarded-For.
+// Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and cannot identify clients correctly.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({
   origin: (origin, cb) => {
