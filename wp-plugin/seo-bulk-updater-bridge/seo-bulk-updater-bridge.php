@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.3.0
+ * Version:     1.4.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -175,27 +175,65 @@ add_action('rest_api_init', function () {
     $taxonomies = array_keys(get_taxonomies(['public' => true], 'names'));
     if (empty($taxonomies)) return;
 
-    $yoast_read = function ($term_id, $taxonomy) {
-        if (!class_exists('WPSEO_Taxonomy_Meta')) return null;
-        $title = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'title');
-        $desc  = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'desc');
-        if ($title !== false || $desc !== false) {
-            return ['title' => (string)($title ?: ''), 'description' => (string)($desc ?: '')];
-        }
-        return null;
+    /**
+     * Read Yoast taxonomy meta directly from the DB option so we bypass
+     * any stale in-memory cache inside WPSEO_Option_Taxonomy.
+     */
+    $yoast_raw_read = function ($term_id, $taxonomy) {
+        global $wpdb;
+        $row = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+                'wpseo_taxonomy_meta'
+            )
+        );
+        if (!$row) return null;
+        $all_meta = maybe_unserialize($row);
+        if (!is_array($all_meta)) return null;
+        $term_data = $all_meta[$taxonomy][$term_id] ?? null;
+        if (!is_array($term_data)) return null;
+        $t = $term_data['wpseo_title'] ?? false;
+        $d = $term_data['wpseo_desc']  ?? false;
+        if ($t === false && $d === false) return null;
+        return ['title' => (string)($t ?: ''), 'description' => (string)($d ?: '')];
     };
 
-    $yoast_write = function ($term_id, $taxonomy, $title, $desc) {
+    $yoast_read = function ($term_id, $taxonomy) use ($yoast_raw_read) {
+        // Try Yoast's class first; fall back to direct DB read so we always
+        // get a value even if WPSEO_Taxonomy_Meta has a stale static cache.
+        if (class_exists('WPSEO_Taxonomy_Meta')) {
+            wp_cache_delete('wpseo_taxonomy_meta', 'options');
+            $title = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'title');
+            $desc  = WPSEO_Taxonomy_Meta::get_term_meta($term_id, $taxonomy, 'desc');
+            if ($title !== false || $desc !== false) {
+                return ['title' => (string)($title ?: ''), 'description' => (string)($desc ?: '')];
+            }
+        }
+        // Fallback: read directly from the serialised option in the DB.
+        return $yoast_raw_read($term_id, $taxonomy);
+    };
+
+    /**
+     * Write Yoast taxonomy meta directly via $wpdb to bypass the
+     * sanitize_option_wpseo_taxonomy_meta filter that WPSEO_Option_Taxonomy
+     * registers — that filter can silently strip or overwrite our title value.
+     */
+    $yoast_write = function ($term_id, $taxonomy, $title, $desc) use ($yoast_raw_read) {
         if (!class_exists('WPSEO_Taxonomy_Meta')) return false;
 
+        global $wpdb;
         $option_key = 'wpseo_taxonomy_meta';
 
-        // Purge WP object cache so we read fresh data from the DB, not a stale
-        // persistent-cache entry (Redis/Memcached that may not auto-invalidate).
-        wp_cache_delete($option_key, 'options');
-        wp_cache_delete('alloptions', 'options');
+        // Read the raw serialised value directly from the DB so we start
+        // with an accurate baseline (no WP object-cache or Yoast static cache).
+        $current_serialized = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+                $option_key
+            )
+        );
 
-        $all_meta = get_option($option_key, []);
+        $all_meta = $current_serialized ? maybe_unserialize($current_serialized) : [];
         if (!is_array($all_meta)) $all_meta = [];
 
         if (!isset($all_meta[$taxonomy]) || !is_array($all_meta[$taxonomy])) {
@@ -208,13 +246,42 @@ add_action('rest_api_init', function () {
         if ($title !== null) $all_meta[$taxonomy][$term_id]['wpseo_title'] = $title;
         if ($desc  !== null) $all_meta[$taxonomy][$term_id]['wpseo_desc']  = $desc;
 
-        // update_option returns false when value is unchanged; treat that as OK.
-        update_option($option_key, $all_meta);
+        $new_serialized = maybe_serialize($all_meta);
 
-        // Purge again so the next read (including the REST read-back from the
-        // Node.js side) gets the value we just wrote, not a cached old copy.
+        // Write directly — this skips update_option and therefore skips the
+        // sanitize_option_* filter that Yoast hooks to sanitise / clean the option.
+        $row_exists = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = %s",
+                $option_key
+            )
+        );
+
+        if ($row_exists) {
+            $wpdb->update(
+                $wpdb->options,
+                ['option_value' => $new_serialized],
+                ['option_name'  => $option_key],
+                ['%s'],
+                ['%s']
+            );
+        } else {
+            $wpdb->insert(
+                $wpdb->options,
+                ['option_name' => $option_key, 'option_value' => $new_serialized, 'autoload' => 'yes'],
+                ['%s', '%s', '%s']
+            );
+        }
+
+        // Bust ALL cache layers so subsequent reads in this and future requests
+        // see the freshly-written value.
         wp_cache_delete($option_key, 'options');
         wp_cache_delete('alloptions', 'options');
+
+        // Tell WordPress caching plugins (WP Rocket, LiteSpeed, W3TC, Divi …)
+        // to purge any cached HTML for pages related to this taxonomy term so
+        // the browser sees the updated title immediately.
+        clean_term_cache([$term_id], $taxonomy);
 
         return true;
     };
