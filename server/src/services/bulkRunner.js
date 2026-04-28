@@ -92,6 +92,24 @@ export const runBulkJob = async (jobId, userId) => {
               description: row.newDescription,
             });
 
+            // Read back and verify — some SEO plugins (especially Yoast taxonomy
+            // meta) can silently swallow the write due to PHP object-cache issues.
+            await delay(300); // small pause so any cache invalidation can settle
+            const verifyMeta = await readTermMeta(wp, resolved.restBase, resolved.id);
+            const titleMismatch = row.newTitle       && verifyMeta.title       !== row.newTitle;
+            const descMismatch  = row.newDescription && verifyMeta.description !== row.newDescription;
+            if (titleMismatch || descMismatch) {
+              const mismatchFields = [
+                titleMismatch       ? `title (wrote "${row.newTitle}", read back "${verifyMeta.title}")`             : null,
+                descMismatch        ? `description (wrote "${row.newDescription}", read back "${verifyMeta.description}")` : null,
+              ].filter(Boolean).join(', ');
+              throw new Error(
+                `Write verification failed for ${mismatchFields}. ` +
+                'The SEO plugin accepted the request but the value did not persist. ' +
+                'Try deactivating any caching plugins (WP Rocket, W3 Total Cache, LiteSpeed Cache) on the WordPress site and re-run.'
+              );
+            }
+
             rowUpdate[`rows.${idx}.resolvedPostId`]   = resolved.id;
             rowUpdate[`rows.${idx}.resolvedPostType`] = `taxonomy:${resolved.restBase}`;
           } else {
@@ -102,6 +120,28 @@ export const runBulkJob = async (jobId, userId) => {
               title: row.newTitle,
               description: row.newDescription,
             });
+
+            // Read-back verification for post meta as well.
+            await delay(300);
+            try {
+              const verifyMeta = await readPostMeta(wp, resolved.type, resolved.id, plugin);
+              const titleMismatch = row.newTitle       && verifyMeta.title       !== row.newTitle;
+              const descMismatch  = row.newDescription && verifyMeta.description !== row.newDescription;
+              if (titleMismatch || descMismatch) {
+                const mismatchFields = [
+                  titleMismatch ? `title (wrote "${row.newTitle}", read back "${verifyMeta.title}")`             : null,
+                  descMismatch  ? `description (wrote "${row.newDescription}", read back "${verifyMeta.description}")` : null,
+                ].filter(Boolean).join(', ');
+                throw new Error(
+                  `Write verification failed for ${mismatchFields}. ` +
+                  'The SEO plugin accepted the request but the value did not persist. ' +
+                  'Try deactivating any caching plugins on the WordPress site and re-run.'
+                );
+              }
+            } catch (verifyErr) {
+              // If the verify read itself fails, re-throw so the row is marked failed
+              throw verifyErr;
+            }
 
             rowUpdate[`rows.${idx}.resolvedPostId`]   = resolved.id;
             rowUpdate[`rows.${idx}.resolvedPostType`] = resolved.type;
@@ -137,8 +177,20 @@ export const runBulkJob = async (jobId, userId) => {
 
           await delay(PER_REQUEST_DELAY);
         } catch (err) {
+          // Produce the most useful error string for the user
+          const rawMsg = err.response?.data?.message
+            || err.response?.data?.code
+            || err.message
+            || 'Unknown error';
+
+          // Map WP REST API codes to plain-English messages
+          const friendlyMsg =
+            rawMsg.includes('rest_forbidden') || rawMsg.includes('not allowed')
+              ? `Permission denied: The WordPress user does not have the required role (Editor or Administrator) to update this content. Full error: ${rawMsg}`
+              : rawMsg;
+
           rowUpdate[`rows.${idx}.status`] = 'failed';
-          rowUpdate[`rows.${idx}.error`]  = err.response?.data?.message || err.message;
+          rowUpdate[`rows.${idx}.error`]  = friendlyMsg;
 
           failedCount++;
           await Job.findByIdAndUpdate(jobId, { $set: rowUpdate, $inc: { failedCount: 1 } });

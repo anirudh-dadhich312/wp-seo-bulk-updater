@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, RotateCcw, Download, Pencil, X, Save, CheckCircle, XCircle, Clock, Loader2, AlertCircle, Globe, Zap, StopCircle } from 'lucide-react';
+import { ArrowLeft, Play, RotateCcw, Download, Pencil, X, Save, CheckCircle, XCircle, Clock, Loader2, AlertCircle, Globe, Zap, StopCircle, ShieldAlert, SearchX, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import api from '../api/axios';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.05 } } };
@@ -25,6 +25,180 @@ const ROW_STATUS = {
 const SSE_BASE = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/\/api$/, '')
   : '';
+
+/* ── Classify a raw WP error string into a known category ─── */
+function classifyError(msg = '') {
+  const m = msg.toLowerCase();
+  if (m.includes('not allowed') || m.includes('forbidden') || m.includes('permission') || m.includes('unauthorized'))
+    return 'permission';
+  if (m.includes('not found for url') || m.includes('post not found') || m.includes('could not extract slug'))
+    return 'not_found';
+  if (m.includes('network') || m.includes('timeout') || m.includes('econnrefused') || m.includes('econnreset'))
+    return 'network';
+  return 'other';
+}
+
+const ERROR_META = {
+  permission: {
+    icon:  ShieldAlert,
+    color: 'text-amber-600 dark:text-amber-400',
+    bg:    'bg-amber-50 dark:bg-amber-500/10',
+    border:'border-amber-200 dark:border-amber-500/20',
+    title: 'WordPress permission denied',
+    body:  'The Application Password user does not have sufficient rights to update these posts or taxonomy terms.',
+    fixes: [
+      'In WordPress Admin → Users, find the user whose Application Password you added.',
+      'Change their role to Editor or Administrator (Contributor / Subscriber cannot edit meta).',
+      'For category/tag SEO updates the user must have the manage_categories capability — Editor role or above.',
+      'After changing the role, re-run this job.',
+    ],
+  },
+  not_found: {
+    icon:  SearchX,
+    color: 'text-red-600 dark:text-red-400',
+    bg:    'bg-red-50 dark:bg-red-500/10',
+    border:'border-red-200 dark:border-red-500/20',
+    title: 'Post / page not found',
+    body:  'The URL resolver could not match these URLs to a WordPress post, page, or term.',
+    fixes: [
+      'Double-check the URLs in your CSV — they must be the exact permalink, not a redirect or alias.',
+      'If the page uses a custom post type, make sure it has REST API support enabled (show_in_rest: true in the CPT registration).',
+      'Pages like /gallery/ or /iko-certified/ may be custom post types. Ask your developer to confirm the post type slug and enable its REST API.',
+      'For pages hidden behind a login or with a draft/private status, the user must have read access.',
+    ],
+  },
+  network: {
+    icon:  AlertCircle,
+    color: 'text-blue-600 dark:text-blue-400',
+    bg:    'bg-blue-50 dark:bg-blue-500/10',
+    border:'border-blue-200 dark:border-blue-500/20',
+    title: 'Network / connection error',
+    body:  'The server could not reach the WordPress site during the update.',
+    fixes: [
+      'Verify the site URL in Client Sites is correct and the site is online.',
+      'Check if a firewall or Cloudflare rule is blocking requests from this server.',
+      'Increase the timeout or retry the job — transient network errors often resolve on a second run.',
+    ],
+  },
+  other: {
+    icon:  AlertCircle,
+    color: 'text-gray-600 dark:text-gray-400',
+    bg:    'bg-gray-50 dark:bg-gray-500/10',
+    border:'border-gray-200 dark:border-gray-500/20',
+    title: 'Unexpected error',
+    body:  'An error occurred that was not recognised as a common failure type.',
+    fixes: [
+      'Read the full error message in the table below for details.',
+      'Check the WordPress site error logs (WP_DEBUG_LOG) for more context.',
+    ],
+  },
+};
+
+function ErrorDiagnosis({ rows }) {
+  const [open, setOpen] = useState(true);
+
+  const failed = rows.filter((r) => r.status === 'failed' && r.error);
+  if (!failed.length) return null;
+
+  // Group by category
+  const groups = {};
+  for (const r of failed) {
+    const cat = classifyError(r.error);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(r);
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-red-200 dark:border-red-500/25 bg-red-50/60 dark:bg-red-500/5 overflow-hidden"
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+            {failed.length} row{failed.length !== 1 ? 's' : ''} failed — click to see how to fix
+          </span>
+        </div>
+        {open
+          ? <ChevronUp className="w-4 h-4 text-red-400" />
+          : <ChevronDown className="w-4 h-4 text-red-400" />}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 space-y-4">
+              {Object.entries(groups).map(([cat, catRows]) => {
+                const m = ERROR_META[cat] || ERROR_META.other;
+                const Icon = m.icon;
+                return (
+                  <div key={cat} className={`rounded-xl border p-4 ${m.bg} ${m.border}`}>
+                    <div className="flex items-start gap-3">
+                      <Icon className={`w-4 h-4 flex-shrink-0 mt-0.5 ${m.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold ${m.color}`}>
+                          {m.title}
+                          <span className="ml-2 font-normal text-xs opacity-70">
+                            ({catRows.length} row{catRows.length !== 1 ? 's' : ''})
+                          </span>
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{m.body}</p>
+
+                        <ul className="mt-3 space-y-1.5">
+                          {m.fixes.map((fix, i) => (
+                            <li key={i} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
+                              <span className="font-bold text-gray-400 flex-shrink-0">{i + 1}.</span>
+                              <span>{fix}</span>
+                            </li>
+                          ))}
+                        </ul>
+
+                        {/* Affected URLs */}
+                        <details className="mt-3">
+                          <summary className="text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 select-none">
+                            Affected URLs ({catRows.length})
+                          </summary>
+                          <ul className="mt-2 space-y-1">
+                            {catRows.map((r, i) => (
+                              <li key={i} className="flex items-start gap-1.5 text-xs">
+                                <a href={r.postUrl} target="_blank" rel="noreferrer"
+                                  className="text-indigo-600 dark:text-indigo-400 hover:underline break-all flex items-center gap-0.5">
+                                  {r.postUrl}
+                                  <ExternalLink className="w-2.5 h-2.5 flex-shrink-0 inline" />
+                                </a>
+                                {r.error && (
+                                  <span className="text-red-500 dark:text-red-400 italic flex-shrink-0">
+                                    — {r.error}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -315,6 +489,13 @@ export default function JobDetail() {
         </AnimatePresence>
       </motion.div>
 
+      {/* Error diagnosis — only when there are failures */}
+      {(job.status === 'completed' || job.status === 'cancelled') && failedCount > 0 && (
+        <motion.div variants={fadeUp}>
+          <ErrorDiagnosis rows={rows} />
+        </motion.div>
+      )}
+
       {/* Rows table */}
       <motion.div variants={fadeUp} className="bg-white border border-gray-100 shadow-sm rounded-2xl overflow-hidden dark:bg-white/[0.05] dark:backdrop-blur-xl dark:border-white/10 dark:shadow-none">
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
@@ -361,7 +542,7 @@ export default function JobDetail() {
                       <span className="text-xs text-gray-400 line-clamp-2">{r.newDescription}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-4 py-3">
                     <AnimatePresence mode="wait">
                       <motion.span key={r.status}
                         initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }}
@@ -371,9 +552,9 @@ export default function JobDetail() {
                       </motion.span>
                     </AnimatePresence>
                     {r.error && (
-                      <p className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400 mt-1">
-                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate max-w-[160px]">{r.error}</span>
+                      <p className="flex items-start gap-1 text-xs text-red-500 dark:text-red-400 mt-1.5 leading-snug max-w-[220px]">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                        <span className="break-words">{r.error}</span>
                       </p>
                     )}
                   </td>

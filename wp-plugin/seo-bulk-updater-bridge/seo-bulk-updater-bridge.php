@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.2.0
+ * Version:     1.3.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -187,13 +187,35 @@ add_action('rest_api_init', function () {
 
     $yoast_write = function ($term_id, $taxonomy, $title, $desc) {
         if (!class_exists('WPSEO_Taxonomy_Meta')) return false;
+
         $option_key = 'wpseo_taxonomy_meta';
-        $all_meta   = (array) get_option($option_key, []);
-        if (!isset($all_meta[$taxonomy]))           $all_meta[$taxonomy] = [];
-        if (!isset($all_meta[$taxonomy][$term_id])) $all_meta[$taxonomy][$term_id] = [];
+
+        // Purge WP object cache so we read fresh data from the DB, not a stale
+        // persistent-cache entry (Redis/Memcached that may not auto-invalidate).
+        wp_cache_delete($option_key, 'options');
+        wp_cache_delete('alloptions', 'options');
+
+        $all_meta = get_option($option_key, []);
+        if (!is_array($all_meta)) $all_meta = [];
+
+        if (!isset($all_meta[$taxonomy]) || !is_array($all_meta[$taxonomy])) {
+            $all_meta[$taxonomy] = [];
+        }
+        if (!isset($all_meta[$taxonomy][$term_id]) || !is_array($all_meta[$taxonomy][$term_id])) {
+            $all_meta[$taxonomy][$term_id] = [];
+        }
+
         if ($title !== null) $all_meta[$taxonomy][$term_id]['wpseo_title'] = $title;
         if ($desc  !== null) $all_meta[$taxonomy][$term_id]['wpseo_desc']  = $desc;
+
+        // update_option returns false when value is unchanged; treat that as OK.
         update_option($option_key, $all_meta);
+
+        // Purge again so the next read (including the REST read-back from the
+        // Node.js side) gets the value we just wrote, not a cached old copy.
+        wp_cache_delete($option_key, 'options');
+        wp_cache_delete('alloptions', 'options');
+
         return true;
     };
 

@@ -1,5 +1,5 @@
 // Static post types to try first (fastest, most common)
-const STATIC_POST_TYPES = ['posts', 'pages', 'product'];
+const STATIC_POST_TYPES = ['posts', 'pages', 'product', 'portfolio', 'service', 'team'];
 
 /**
  * Extract the final non-empty path segment as the slug.
@@ -51,18 +51,31 @@ const discoverTaxonomies = async (wp) => {
 
 /**
  * Search a single post type for a slug.
- * Passes `status=any` so drafts and scheduled posts are included.
+ * First tries with status=any + edit context (requires edit_posts capability).
+ * Falls back to a public query without status=any for restricted users.
  * Returns the post object or null.
  */
 const findPostBySlug = async (wp, restBase, slug) => {
+  // Primary: authenticated edit query — sees all statuses
   try {
     const res = await wp.get(`/wp-json/wp/v2/${restBase}`, {
       params: { slug, status: 'any', _fields: 'id,slug,link', context: 'edit' },
     });
     if (Array.isArray(res.data) && res.data.length > 0) return res.data[0];
   } catch {
-    // 404 = post type not registered; other errors = keep trying
+    // 404 = post type not registered, 403 = no edit cap → fallback below
   }
+
+  // Fallback: public query without status restriction (works for lower-permission users)
+  try {
+    const res = await wp.get(`/wp-json/wp/v2/${restBase}`, {
+      params: { slug, _fields: 'id,slug,link' },
+    });
+    if (Array.isArray(res.data) && res.data.length > 0) return res.data[0];
+  } catch {
+    // 404 = post type definitely not registered; skip
+  }
+
   return null;
 };
 
