@@ -92,6 +92,18 @@ add_action('rest_api_init', function () use ($SEO_BRIDGE_POST_META_KEYS) {
         if ($modified) {
             wp_cache_delete($post_id, 'post_meta');
             clean_post_cache($post_id);
+
+            // Clear per-post page cache for common caching plugins so the
+            // frontend immediately reflects the new SEO meta without a manual flush.
+            if (function_exists('rocket_clean_post'))           rocket_clean_post($post_id);           // WP Rocket
+            if (function_exists('w3tc_pgcache_flush_post'))     w3tc_pgcache_flush_post($post_id);     // W3 Total Cache
+            if (function_exists('wp_cache_post_change'))        wp_cache_post_change($post_id);        // WP Super Cache
+            if (function_exists('litespeed_purge_post'))        litespeed_purge_post($post_id);        // LiteSpeed Cache
+            if (function_exists('sg_cachepress_purge_cache'))   sg_cachepress_purge_cache();           // SG Optimizer
+            if (function_exists('cache_enabler_clear_page_cache_by_post_id')) {
+                cache_enabler_clear_page_cache_by_post_id($post_id);                                  // Cache Enabler
+            }
+            do_action('litespeed_purge_post', $post_id);       // LiteSpeed (hook form)
         }
     };
 
