@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.5.0
+ * Version:     1.6.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -11,6 +11,44 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+/**
+ * Force REST API access for every public post type and taxonomy that was
+ * not originally registered with show_in_rest = true.
+ *
+ * This is the fix for "Post / page not found" errors on sites that use
+ * custom post types (e.g. 'topics', 'episode', 'forum') or custom taxonomies
+ * without REST support — our URL resolver can't find them otherwise.
+ *
+ * Priority 999 so we run after all theme/plugin registrations are done.
+ */
+add_action('init', function () {
+    $skip_types = [
+        'attachment', 'revision', 'nav_menu_item', 'custom_css',
+        'customize_changeset', 'oembed_cache', 'user_request',
+        'wp_block', 'wp_template', 'wp_template_part',
+        'wp_global_styles', 'wp_navigation',
+    ];
+    $skip_taxes = ['nav_menu', 'link_category', 'post_format'];
+
+    // Post types
+    foreach (get_post_types(['public' => true], 'objects') as $type => $obj) {
+        if (in_array($type, $skip_types, true)) continue;
+        if (!empty($obj->show_in_rest)) continue;
+        $obj->show_in_rest           = true;
+        $obj->rest_base              = !empty($obj->rest_base) ? $obj->rest_base : $type;
+        $obj->rest_controller_class  = 'WP_REST_Posts_Controller';
+    }
+
+    // Taxonomies
+    foreach (get_taxonomies(['public' => true], 'objects') as $tax => $obj) {
+        if (in_array($tax, $skip_taxes, true)) continue;
+        if (!empty($obj->show_in_rest)) continue;
+        $obj->show_in_rest  = true;
+        $obj->rest_base     = !empty($obj->rest_base) ? $obj->rest_base : $tax;
+        $obj->rest_controller_class = 'WP_REST_Terms_Controller';
+    }
+}, 999);
 
 /**
  * WordPress's update_post_meta returns false — and the REST API then returns

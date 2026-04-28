@@ -10,8 +10,21 @@ import Site from '../models/Site.js';
 
 const CONCURRENCY = 3;
 const PER_REQUEST_DELAY = 200;
+const MAX_RETRIES = 2;         // retry a row up to 2 extra times on transient errors
+const RETRY_DELAY_BASE = 2000; // 2s → 4s backoff between retries
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientError = (err) => {
+  const code = err.code || '';
+  const status = err.response?.status;
+  // Network timeout / connection reset / 429 rate-limit / 5xx server error
+  return (
+    code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNRESET' ||
+    code === 'ENOTFOUND'    || code === 'EAI_AGAIN'  ||
+    status === 429 || (status >= 500 && status <= 599)
+  );
+};
 
 // In-memory emitter registry for SSE real-time progress
 const jobEmitters = new Map();
@@ -78,7 +91,10 @@ export const runBulkJob = async (jobId, userId) => {
 
         const rowUpdate = { [`rows.${idx}.processedAt`]: new Date() };
 
-        try {
+        let attempt = 0;
+        // Retry loop — retries only on transient network/server errors
+        while (true) {
+          try {
           const resolved = await resolvePostFromUrl(wp, row.postUrl);
 
           let oldMeta = { title: '', description: '' };
@@ -176,25 +192,40 @@ export const runBulkJob = async (jobId, userId) => {
           ]);
 
           await delay(PER_REQUEST_DELAY);
-        } catch (err) {
-          // Produce the most useful error string for the user
-          const rawMsg = err.response?.data?.message
-            || err.response?.data?.code
-            || err.message
-            || 'Unknown error';
+            break; // success — exit retry loop
+          } catch (err) {
+            // Retry on transient network/server errors (timeout, 5xx, rate-limit)
+            if (isTransientError(err) && attempt < MAX_RETRIES) {
+              attempt++;
+              await delay(RETRY_DELAY_BASE * attempt); // 2s, then 4s
+              continue; // retry
+            }
 
-          // Map WP REST API codes to plain-English messages
-          const friendlyMsg =
-            rawMsg.includes('rest_forbidden') || rawMsg.includes('not allowed')
-              ? `Permission denied: The WordPress user does not have the required role (Editor or Administrator) to update this content. Full error: ${rawMsg}`
-              : rawMsg;
+            // Permanent failure — produce the most useful error string for the user
+            const rawMsg = err.response?.data?.message
+              || err.response?.data?.code
+              || err.message
+              || 'Unknown error';
 
-          rowUpdate[`rows.${idx}.status`] = 'failed';
-          rowUpdate[`rows.${idx}.error`]  = friendlyMsg;
+            const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' ||
+                              (err.message || '').toLowerCase().includes('timeout');
 
-          failedCount++;
-          await Job.findByIdAndUpdate(jobId, { $set: rowUpdate, $inc: { failedCount: 1 } });
-        }
+            // Map WP REST API codes / error types to plain-English messages
+            const friendlyMsg =
+              rawMsg.includes('rest_forbidden') || rawMsg.includes('not allowed')
+                ? `Permission denied: The WordPress user does not have the required role (Editor or Administrator) to update this content. Full error: ${rawMsg}`
+                : isTimeout
+                  ? `Network timeout: the WordPress site did not respond within ${Math.round(25000 / 1000)}s (tried ${attempt + 1}×). Check the site is online and not blocking this server. Full error: ${rawMsg}`
+                  : rawMsg;
+
+            rowUpdate[`rows.${idx}.status`] = 'failed';
+            rowUpdate[`rows.${idx}.error`]  = friendlyMsg;
+
+            failedCount++;
+            await Job.findByIdAndUpdate(jobId, { $set: rowUpdate, $inc: { failedCount: 1 } });
+            break; // exit retry loop
+          }
+        } // end retry while
 
         emitter.emit('progress', {
           successCount,
