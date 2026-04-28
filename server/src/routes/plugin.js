@@ -6,7 +6,8 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
-const ZIP_PATH = path.resolve(__dirname, '../../../wp-plugin/seo-bulk-updater-bridge.zip');
+// Zip lives inside server/ so Railway (which deploys only the server subdirectory) includes it.
+const ZIP_PATH = path.resolve(__dirname, '../../static/seo-bulk-updater-bridge.zip');
 
 // Public endpoint — no auth required so users can download before signing up
 router.get('/download', (req, res) => {
