@@ -1,22 +1,12 @@
-/**
- * Universal field map for SEO plugins (used for post/page/CPT writes).
- * All plugins except AIOSEO write via the standard WP `meta` object using
- * keys registered with show_in_rest=true by the bridge plugin.
- *
- * AIOSEO 4+ stores in a custom table (wp_aioseo_posts), not wp_postmeta,
- * so it requires its own dedicated REST field in the bridge plugin.
- */
+// Yoast and generic write via the standard WP `meta` object.
+// AIOSEO 4+ stores in a custom table so it uses its own REST field.
 export const META_FIELD_MAP = {
-  yoast:    { title: '_yoast_wpseo_title',     description: '_yoast_wpseo_metadesc' },
-  rankmath: { title: 'rank_math_title',         description: 'rank_math_description' },
-  generic:  { title: '_seo_title',              description: '_seo_description' },
+  yoast:   { title: '_yoast_wpseo_title', description: '_yoast_wpseo_metadesc' },
+  generic: { title: '_seo_title',         description: '_seo_description' },
 };
 
 export const getMetaFields = (plugin) => META_FIELD_MAP[plugin] || META_FIELD_MAP.generic;
 
-// Only AIOSEO needs a dedicated REST field (custom DB table, not wp_postmeta).
-// Rank Math stores in standard wp_postmeta — write via the meta object instead
-// so we don't depend on the bridge plugin's `rankmath` REST field being registered.
 const REST_FIELD_PLUGINS = {
   aioseo: 'aioseo',
 };
@@ -43,13 +33,7 @@ export const readPostMeta = async (wp, postType, postId, plugin) => {
   return { title: meta[fields.title] || '', description: meta[fields.description] || '' };
 };
 
-/**
- * Write SEO meta to a standard post/page/CPT.
- *
- * Strategy by plugin:
- *   yoast / rankmath / generic → `meta` object (keys registered show_in_rest=true by bridge)
- *   aioseo                     → `aioseo` REST field (bridge writes to wp_aioseo_posts table)
- */
+// yoast / generic → `meta` object; aioseo → `aioseo` REST field (custom DB table)
 export const writePostMeta = async (wp, postType, postId, plugin, { title, description }) => {
   const restField = REST_FIELD_PLUGINS[plugin];
 
@@ -86,11 +70,7 @@ export const readTermMeta = async (wp, restBase, termId) => {
   }
 };
 
-/**
- * Write SEO meta for a taxonomy term via the bridge plugin's `seo_meta` field.
- * The bridge routes writes through each plugin's native taxonomy meta API
- * (Yoast wpseo_taxonomy_meta option, Rank Math term meta, AIOSEO terms table).
- */
+// Write SEO meta for a taxonomy term via the bridge plugin's `seo_meta` REST field.
 export const writeTermMeta = async (wp, restBase, termId, { title, description }) => {
   const payload = {};
   if (title       != null) payload.title       = title;
