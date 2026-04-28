@@ -29,8 +29,16 @@ app.use(cors({
   },
   credentials: true,
 }));
-// Compress all JSON/text responses — measurable wins on job rows payloads
-app.use(compression());
+// Compress JSON/text responses — skip binary downloads that are already compressed
+app.use(compression({
+  filter: (req, res) => {
+    const ct = res.getHeader('Content-Type') || '';
+    if (String(ct).includes('application/zip') || String(ct).includes('application/octet-stream')) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+}));
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 
