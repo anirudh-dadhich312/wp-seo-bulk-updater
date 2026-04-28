@@ -228,7 +228,7 @@ export const streamJobProgress = async (req, res) => {
     // Poll for the emitter — it's registered async inside runBulkJob.
     // 100 ms × 40 attempts = 4 s maximum wait before giving up.
     let attempts = 0;
-    const attach = () => {
+    const attach = async () => {
       if (clientGone) return;                          // client left while we waited
 
       const emitter = getJobEmitter(String(job._id));
