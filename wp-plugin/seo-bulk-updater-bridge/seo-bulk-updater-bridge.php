@@ -175,6 +175,50 @@ add_action('rest_api_init', function () {
     ]);
 });
 
+// URL resolver: converts a full permalink to a post/term ID using WordPress's own rewrite rules.
+// This is the only reliable way to resolve date-based permalinks (e.g. /2015/07/01/slug/)
+// where the last path segment alone is ambiguous or matches the wrong post.
+add_action('rest_api_init', function () {
+    register_rest_route('seo-bridge/v1', '/resolve', [
+        'methods'             => WP_REST_Server::CREATABLE,
+        'permission_callback' => fn() => current_user_can('edit_posts'),
+        'args'                => [
+            'url' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'esc_url_raw'],
+        ],
+        'callback' => function (WP_REST_Request $request) {
+            $url     = $request->get_param('url');
+            $post_id = url_to_postid($url);
+
+            if ($post_id) {
+                $post     = get_post($post_id);
+                $type_obj = get_post_type_object($post->post_type);
+                $rest_base = $type_obj->rest_base ?: $post->post_type;
+                return rest_ensure_response(['kind' => 'post', 'id' => $post_id, 'type' => $rest_base]);
+            }
+
+            // Taxonomy term fallback: match the last path segment against all public taxonomies.
+            $segments = array_filter(explode('/', parse_url($url, PHP_URL_PATH) ?: ''));
+            $slug     = end($segments);
+            if ($slug) {
+                foreach (get_taxonomies(['public' => true], 'objects') as $tax => $tax_obj) {
+                    $term = get_term_by('slug', $slug, $tax);
+                    if ($term && !is_wp_error($term)) {
+                        $rest_base = $tax_obj->rest_base ?: $tax;
+                        return rest_ensure_response([
+                            'kind'     => 'term',
+                            'id'       => $term->term_id,
+                            'taxonomy' => $tax,
+                            'restBase' => $rest_base,
+                        ]);
+                    }
+                }
+            }
+
+            return new WP_Error('not_found', "Could not resolve URL: {$url}", ['status' => 404]);
+        },
+    ]);
+});
+
 // Taxonomy terms: expose a 'seo_meta' REST field for reading and writing SEO title/description.
 // Yoast stores taxonomy meta in the wpseo_taxonomy_meta option (not term meta), so we write
 // directly via $wpdb to bypass the sanitize_option filter that silently strips title values.

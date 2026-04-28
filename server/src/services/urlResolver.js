@@ -97,29 +97,40 @@ const findTermBySlug = async (wp, restBase, slug) => {
  * Resolve a post/page/term URL to an object describing how to update it.
  *
  * Returns one of:
- *   { kind: 'post', id, type }          — standard post/page/CPT
+ *   { kind: 'post', id, type }               — standard post/page/CPT
  *   { kind: 'term', id, taxonomy, restBase } — category/tag/custom taxonomy term
+ *
+ * Strategy:
+ *   1. Ask the bridge plugin's /resolve endpoint — uses WordPress's url_to_postid()
+ *      which is the only way to reliably handle date-based permalinks.
+ *   2. Fall back to slug-based REST search (handles sites without the bridge plugin).
  *
  * Throws if no match is found.
  */
 export const resolvePostFromUrl = async (wp, postUrl) => {
+  // --- 1. Bridge-plugin authoritative resolution (url_to_postid on the WP side) ---
+  try {
+    const res = await wp.post('/wp-json/seo-bridge/v1/resolve', { url: postUrl });
+    if (res.data?.id) return res.data;
+  } catch (_) {
+    // Bridge plugin not installed or request failed — fall through to slug search
+  }
+
+  // --- 2. Slug-based fallback ---
   const slug = extractSlug(postUrl);
   if (!slug) throw new Error(`Could not extract slug from URL: ${postUrl}`);
 
-  // --- 1. Static post types (includes status=any for draft/scheduled) ---
   for (const restBase of STATIC_POST_TYPES) {
     const post = await findPostBySlug(wp, restBase, slug);
     if (post) return { kind: 'post', id: post.id, type: restBase };
   }
 
-  // --- 2. Dynamically discovered custom post types ---
   const customTypes = await discoverCustomPostTypes(wp);
   for (const restBase of customTypes) {
     const post = await findPostBySlug(wp, restBase, slug);
     if (post) return { kind: 'post', id: post.id, type: restBase };
   }
 
-  // --- 3. Taxonomy terms (categories, tags, custom taxonomies) ---
   const taxonomies = await discoverTaxonomies(wp);
   for (const tax of taxonomies) {
     const term = await findTermBySlug(wp, tax.restBase, slug);
