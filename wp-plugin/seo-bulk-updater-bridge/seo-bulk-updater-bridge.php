@@ -3,7 +3,7 @@
  * Plugin Name: SEO Bulk Updater Bridge
  * Plugin URI:  https://example.com/seo-bulk-updater
  * Description: Exposes Yoast / RankMath / AIOSEO meta fields via the WordPress REST API so they can be bulk-updated remotely from the SEO Bulk Updater dashboard.
- * Version:     1.4.0
+ * Version:     1.5.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -11,6 +11,51 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+/**
+ * WordPress's update_post_meta returns false — and the REST API then returns
+ * "Could not update the meta value … in database." — whenever the new value
+ * is identical to the already-stored value (WordPress skips a no-op update).
+ *
+ * We intercept the update_post_metadata filter for every meta key we manage
+ * and force the write through $wpdb directly, bypassing WordPress's same-value
+ * short-circuit so the REST endpoint always gets a truthy return value.
+ */
+add_filter('update_post_metadata', function ($check, $object_id, $meta_key, $meta_value, $prev_value) {
+    static $managed_keys = null;
+    if ($managed_keys === null) {
+        $managed_keys = [
+            '_yoast_wpseo_title', '_yoast_wpseo_metadesc',
+            'rank_math_title',    'rank_math_description',
+            '_aioseo_title',      '_aioseo_description',
+            '_seo_title',         '_seo_description',
+        ];
+    }
+
+    if (!in_array($meta_key, $managed_keys, true)) {
+        return $check; // not our key — let WordPress handle it normally
+    }
+
+    global $wpdb;
+    $oid = (int) $object_id;
+
+    // Delete any existing row(s) for this post+key, then insert fresh.
+    // This guarantees success even when the value hasn't changed, because
+    // update_post_meta compares old == new and returns false for no-op updates.
+    $wpdb->delete($wpdb->postmeta, ['post_id' => $oid, 'meta_key' => $meta_key], ['%d', '%s']);
+    $wpdb->insert(
+        $wpdb->postmeta,
+        ['post_id' => $oid, 'meta_key' => $meta_key, 'meta_value' => maybe_serialize($meta_value)],
+        ['%d', '%s', '%s']
+    );
+
+    // Bust WordPress's in-memory post-meta cache so subsequent get_post_meta
+    // calls in the same request return the freshly written value.
+    wp_cache_delete($oid, 'post_meta');
+    clean_post_cache($oid);
+
+    return true; // non-null return tells WordPress we handled the update
+}, 10, 5);
 
 add_action('rest_api_init', function () {
     $fields = [
