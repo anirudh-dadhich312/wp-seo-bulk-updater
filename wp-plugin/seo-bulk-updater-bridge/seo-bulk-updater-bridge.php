@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SEO Bulk Updater Bridge
  * Description: Exposes Yoast / AIOSEO meta fields via the WordPress REST API for bulk updates.
- * Version:     1.7.0
+ * Version:     1.8.0
  * Author:      SEO Bulk Updater
  * License:     GPL-2.0-or-later
  */
@@ -202,15 +202,30 @@ add_action('rest_api_init', function () {
             $post_id = url_to_postid($url);
 
             if ($post_id) {
-                $post     = get_post($post_id);
-                $type_obj = get_post_type_object($post->post_type);
+                $post      = get_post($post_id);
+                $type_obj  = get_post_type_object($post->post_type);
                 $rest_base = $type_obj->rest_base ?: $post->post_type;
                 return rest_ensure_response(['kind' => 'post', 'id' => $post_id, 'type' => $rest_base]);
             }
 
-            // Taxonomy term fallback: match the last path segment against all public taxonomies.
-            $segments = array_filter(explode('/', parse_url($url, PHP_URL_PATH) ?: ''));
+            // url_to_postid() returns 0 for special WordPress pages (blog index, front page).
+            // Check explicitly against the WordPress "Posts page" and "Front page" settings.
+            $segments = array_values(array_filter(explode('/', parse_url($url, PHP_URL_PATH) ?: '')));
             $slug     = end($segments);
+
+            $page_for_posts  = (int) get_option('page_for_posts');
+            $page_on_front   = (int) get_option('page_on_front');
+
+            foreach ([$page_for_posts, $page_on_front] as $special_id) {
+                if ($special_id && $slug === get_post_field('post_name', $special_id)) {
+                    $post      = get_post($special_id);
+                    $type_obj  = get_post_type_object($post->post_type);
+                    $rest_base = $type_obj->rest_base ?: $post->post_type;
+                    return rest_ensure_response(['kind' => 'post', 'id' => $special_id, 'type' => $rest_base]);
+                }
+            }
+
+            // Taxonomy term fallback: match the slug against all public taxonomies.
             if ($slug) {
                 foreach (get_taxonomies(['public' => true], 'objects') as $tax => $tax_obj) {
                     $term = get_term_by('slug', $slug, $tax);
